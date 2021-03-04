@@ -1,0 +1,125 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<parent>
+		<groupId>org.openmrs.module</groupId>
+		<artifactId>bahmnisyncmaster</artifactId>
+		<version>0.0.1-SNAPSHOT</version>
+	</parent>
+
+	<artifactId>bahmnisyncmaster-api</artifactId>
+	<packaging>jar</packaging>
+	<name>Bahmni Sync Master Module API</name>
+	<description>API project for Bahmni Sync for Worker node</description>
+
+	<dependencies>
+	
+		<!-- 
+		Add other dependencies from parent's pom:
+		<dependency>
+			<groupId>org.other.library</groupId> 
+			<artifactId>library-name</artifactId>
+		</dependency> 
+		-->
+		
+
+		<!-- Begin OpenMRS core -->
+		
+		<dependency>
+			<groupId>org.openmrs.api</groupId>
+			<artifactId>openmrs-api</artifactId>
+			<type>jar</type>
+		</dependency>
+		
+		<dependency>
+			<groupId>org.openmrs.web</groupId>
+			<artifactId>openmrs-web</artifactId>
+			<type>jar</type>
+		</dependency>
+				
+		<dependency>
+			<groupId>org.openmrs.api</groupId>
+			<artifactId>openmrs-api</artifactId>
+			<classifier>tests</classifier>
+			<scope>test</scope>
+		</dependency>
+		
+		<dependency>
+			<groupId>org.openmrs.web</groupId>
+			<artifactId>openmrs-web</artifactId>
+			<classifier>tests</classifier>
+			<scope>test</scope>
+		</dependency>
+		
+		<dependency>
+			<groupId>org.openmrs.test</groupId>
+			<artifactId>openmrs-test</artifactId>
+			<type>pom</type>
+			<scope>test</scope>
+		</dependency>
+		
+		<dependency>
+			<groupId>org.dbunit</groupId>
+			<artifactId>dbunit</artifactId>
+		</dependency>
+		
+	<dependency>
+	    <groupId>org.slf4j</groupId>
+	    <artifactId>slf4j-api</artifactId>
+	    <version>1.7.30</version>
+	</dependency>
+	<dependency>
+	    <groupId>org.slf4j</groupId>
+	    <artifactId>slf4j-simple</artifactId>
+	    <version>1.7.30</version>
+	</dependency>
+		
+		<dependency>
+        	<groupId>org.apache.kafka</groupId>
+	    	<artifactId>kafka-clients</artifactId>
+	    	<version>2.6.1</version>
+        </dependency>
+        
+        <dependency>
+	        <groupId>com.squareup.okhttp3</groupId>
+	        <artifactId>okhttp</artifactId>
+	        <version>4.2.2</version>
+	    </dependency>
+	    
+	    <dependency>
+		    <groupId>org.json</groupId>
+		    <artifactId>json</artifactId>
+		    <version>20180130</version>
+		</dependency>
+				
+		<!-- End OpenMRS core -->
+		
+	</dependencies>
+	
+	<build>
+		<resources>
+			<resource>
+				<directory>src/main/resources</directory>
+				<filtering>true</filtering>
+			</resource>
+		</resources>
+
+		<testResources>
+			<testResource>
+				<directory>src/test/resources</directory>
+				<filtering>false</filtering>
+			</testResource>
+		</testResources>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>7</source>
+                    <target>7</target>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

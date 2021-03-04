@@ -339,7 +339,6 @@ public class BahmniSyncClientDataPush {
 		
 	}
 	
-	
 	private static String getColumnDataType(JSONObject schema, String columnName){
 		
 		JSONArray fieldsArray = getJSONArrayFromSchema(schema,"after");
