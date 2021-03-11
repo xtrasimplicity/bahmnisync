@@ -57,7 +57,7 @@ public class DebeziumObject {
 	}
 	
 	public void setData(String colName, String value){
-		data.replace(colName, value);
+		data.put(colName,value);
 	}
 
 	public String getPk() {

@@ -1,11 +1,11 @@
 <%@ include file="/WEB-INF/template/include.jsp"%>
 
-<openmrs:require privilege="Manage Bahmni Sync" otherwise="/login.htm" redirect="/module/webservices/rest/settings.form" />
+<openmrs:require privilege="Manage Bahmni Sync" otherwise="/login.htm" redirect="/module/bahmnisyncmaster/log.form" />
 
 <%@ include file="/WEB-INF/template/header.jsp"%>
 <%@ include file="template/localHeader.jsp" %>
 
-<h2><spring:message code="bahmnisyncmaster.sync.log" /></h2>
+<h2>Sync Logs</h2>
 
 <table>
  <thead>

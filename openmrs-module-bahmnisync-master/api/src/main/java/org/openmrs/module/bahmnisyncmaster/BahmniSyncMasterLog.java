@@ -1,6 +1,7 @@
 package org.openmrs.module.bahmnisyncmaster;
 
 import java.util.Date;
+import java.util.List;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -102,6 +103,5 @@ public class BahmniSyncMasterLog {
 	
 	@Column(name = "table_name", nullable = true)
 	private String table_name;
-
 
 }

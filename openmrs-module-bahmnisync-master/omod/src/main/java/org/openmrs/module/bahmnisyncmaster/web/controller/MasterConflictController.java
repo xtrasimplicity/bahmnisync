@@ -15,23 +15,28 @@ package org.openmrs.module.bahmnisyncmaster.web.controller;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.codehaus.jackson.map.ObjectMapper;
+import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.openmrs.GlobalProperty;
 import org.openmrs.api.AdministrationService;
 import org.openmrs.api.context.Context;
 import org.openmrs.module.bahmnisyncmaster.BahmniSyncMasterLog;
-import org.openmrs.module.bahmnisyncmaster.service.DataPullService;
+import org.openmrs.module.bahmnisyncmaster.service.DataPushService;
 import org.openmrs.module.bahmnisyncmaster.util.BahmniSyncMasterConstants;
-import org.openmrs.module.bahmnisyncmaster.web.controller.MasterConfigController.GlobalPropertiesModel;
 import org.openmrs.web.WebConstants;
 import org.springframework.validation.Errors;
 import org.springframework.validation.Validator;
@@ -44,11 +49,11 @@ import org.springframework.web.context.request.WebRequest;
  * 'module/basicmodule/basicmoduleLink.form'.
  */
 @Controller
-@RequestMapping(value = "module/bahmnisyncmaster/conflict.form")
+@RequestMapping(value = "/module/bahmnisyncmaster/conflict.form")
 public class MasterConflictController {
 	
 	@Autowired
-	DataPullService dataPullrService;
+	DataPushService dataPullService;
 	
 	/** Logger for this class and subclasses */
 	protected final Log log = LogFactory.getLog(getClass());
@@ -69,8 +74,53 @@ public class MasterConflictController {
 	@ModelAttribute("mastersyncconflicts")
 	public List<BahmniSyncMasterLog> getModel() {
 		
-		return dataPullrService.getConflictBahmniSyncMasterLog();
+		List<BahmniSyncMasterLog> logs = dataPullService.getConflictBahmniSyncMasterLog();
 		
+		List<BahmniSyncMasterLog> newLogs = new ArrayList();
+		for(BahmniSyncMasterLog log: logs){
+			String master = log.getMasterData();
+			String worker = log.getWorkerData();
+			
+			Map<String, String> masterMap = convertWithStream(master);
+			Map<String, String> workerMap = convertWithStream(worker);
+			
+			String conflictingData = "";
+			for (Map.Entry<String,String> entry : masterMap.entrySet()) {
+				if(!entry.getValue().equals(workerMap.get(entry.getKey()))){
+					String list = entry.getKey() + ": ";
+					if(log.getMessage().contains("master"))
+						list = list + "<b>" + entry.getValue() + "</b> , ";
+					else	
+						list = list + entry.getValue() + " , ";
+					
+					if(log.getMessage().contains("worker"))
+						list = list + "<b>" + workerMap.get(entry.getKey())  + "</b> ";
+					else	
+						list = list + workerMap.get(entry.getKey()) ;
+					 
+					conflictingData = conflictingData + list + "<br/>";
+				}
+			}
+	           
+			log.setMasterData(conflictingData);
+			
+			newLogs.add(log);
+		}
+		
+		return logs;
+		
+	}
+	
+	public Map<String, String> convertWithStream(String mapAsString) {
+		mapAsString = mapAsString.replace("{","");
+		mapAsString = mapAsString.replace("}","");
+		Map<String, String> map = new HashMap<>();
+	    String[] splitArray = mapAsString.split(",");
+	    for(String str : splitArray){
+	    	String[] mapArray = str.split("=");
+	    	map.put(mapArray[0],mapArray[1]);
+	    }
+	    return map;
 	}
 	
 }

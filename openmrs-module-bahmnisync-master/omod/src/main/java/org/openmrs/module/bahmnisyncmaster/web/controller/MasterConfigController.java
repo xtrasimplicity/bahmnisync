@@ -40,7 +40,7 @@ import org.springframework.web.context.request.WebRequest;
  * 'module/basicmodule/basicmoduleLink.form'.
  */
 @Controller
-@RequestMapping(value = "module/bahmnisyncmaster/config.form")
+@RequestMapping(value = "/module/bahmnisyncmaster/config.form")
 public class MasterConfigController {
 	
 	/** Logger for this class and subclasses */

@@ -29,7 +29,7 @@ import org.openmrs.GlobalProperty;
 import org.openmrs.api.AdministrationService;
 import org.openmrs.api.context.Context;
 import org.openmrs.module.bahmnisyncmaster.BahmniSyncMasterLog;
-import org.openmrs.module.bahmnisyncmaster.service.DataPullService;
+import org.openmrs.module.bahmnisyncmaster.service.DataPushService;
 import org.openmrs.module.bahmnisyncmaster.util.BahmniSyncMasterConstants;
 import org.openmrs.module.bahmnisyncmaster.web.controller.MasterConfigController.GlobalPropertiesModel;
 import org.openmrs.web.WebConstants;
@@ -44,11 +44,11 @@ import org.springframework.web.context.request.WebRequest;
  * 'module/basicmodule/basicmoduleLink.form'.
  */
 @Controller
-@RequestMapping(value = "module/bahmnisyncmaster/log.form")
+@RequestMapping(value = "/module/bahmnisyncmaster/log.form")
 public class MasterLogController {
 	
 	@Autowired
-	DataPullService dataPullrService;
+	DataPushService dataPullrService;
 	
 	/** Logger for this class and subclasses */
 	protected final Log log = LogFactory.getLog(getClass());

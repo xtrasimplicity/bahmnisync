@@ -19,22 +19,19 @@
 	<li
 			<c:if test='<%= request.getRequestURI().contains("/config") %>'>class="active"</c:if>>
 		<a
-				href="${pageContext.request.contextPath}/module/bahmnisyncmaster/config.form"><spring:message
-				code="bahmnisyncmaster.config"/></a>
+				href="${pageContext.request.contextPath}/module/bahmnisyncmaster/config.form">Config</a>
 	</li>
 	
 	<li
 			<c:if test='<%= request.getRequestURI().contains("/conflict") %>'>class="active"</c:if>>
 		<a
-				href="${pageContext.request.contextPath}/module/bahmnisyncmaster/conflict.form"><spring:message
-				code="bahmnisyncmaster.conflict"/></a>
+				href="${pageContext.request.contextPath}/module/bahmnisyncmaster/conflict.form">Conflicts</a>
 	</li>
 
 	<li
 			<c:if test='<%= request.getRequestURI().contains("/log") %>'>class="active"</c:if>>
 		<a
-				href="${pageContext.request.contextPath}/module/bahmnisyncmaster/log.form"><spring:message
-				code="bahmnisyncmaster.log"/></a>
+				href="${pageContext.request.contextPath}/module/bahmnisyncmaster/log.form">Logs</a>
 	</li>
 
 </ul>

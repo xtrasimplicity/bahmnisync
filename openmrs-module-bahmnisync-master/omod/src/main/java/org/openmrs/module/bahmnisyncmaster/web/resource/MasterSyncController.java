@@ -31,11 +31,13 @@ import javax.servlet.http.HttpSession;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.json.JSONObject;
 import org.openmrs.GlobalProperty;
 import org.openmrs.api.APIException;
 import org.openmrs.api.AdministrationService;
 import org.openmrs.api.context.Context;
 import org.openmrs.module.bahmnisyncmaster.service.DataPullService;
+import org.openmrs.module.bahmnisyncmaster.service.DataPushService;
 import org.openmrs.module.bahmnisyncmaster.util.BahmniSyncMasterConstants;
 import org.openmrs.web.WebConstants;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,12 +45,14 @@ import org.springframework.stereotype.Controller;
 import org.springframework.ui.ModelMap;
 import org.springframework.validation.Errors;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.WebRequest;
+
 import org.springframework.ui.Model;
 
 import org.openmrs.module.webservices.rest.web.RestConstants;
@@ -62,7 +66,10 @@ public class MasterSyncController {
 	protected final Log log = LogFactory.getLog(getClass());
 	
 	@Autowired
-	DataPullService dataPullrService;
+	DataPushService dataPushService;
+	
+	@Autowired
+	DataPullService dataPullService;
 	
 	@RequestMapping(value = "/debeziumObjects", method = RequestMethod.POST)
 	@ResponseBody
@@ -71,9 +78,18 @@ public class MasterSyncController {
 
 	
 		  for(Map<String, Object> obj : debeziumObjects){
-			  dataPullrService.startDataPush(obj);
+			  dataPushService.startDataPush(obj);
 		  }
 	
 		return "DONE!";
 	}
+	
+	@RequestMapping(value = "/debeziumObjects/{serverid}/{chunksize}", method = RequestMethod.GET)
+	@ResponseBody
+    public String getDebeziumObjects(HttpServletRequest request, @PathVariable(value="serverid") String serverid, @PathVariable(value="chunksize") Integer chunksize) throws Exception {
+			
+		ArrayList<JSONObject> s = dataPullService.startDataPull(serverid, chunksize);
+		return s.toString();
+        
+    }
 }

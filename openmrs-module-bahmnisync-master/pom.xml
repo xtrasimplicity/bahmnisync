@@ -6,13 +6,11 @@
 	<artifactId>bahmnisyncmaster</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<packaging>pom</packaging>
-	<name>BahmnuSync Master Module</name>
-	<description>Enables exchanging data and metadata between OpenMRS installations</description>
-	<url>https://wiki.openmrs.org/display/docs/Data+Exchange+Module+Module</url>
+	<name>BahmniSync Master Module</name>
 	
 	<developers>
 		<developer>
-			<name>Rafal Korytkowski</name>
+			<name>Rabbia Hsssan</name>
 		</developer>
 	</developers>
 	
@@ -225,4 +223,5 @@
 		</pluginRepository>
 	</pluginRepositories>
 
+	<description>Sync Module for openmrs/bahmni</description>
 </project>

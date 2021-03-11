@@ -1,6 +1,6 @@
 <%@ include file="/WEB-INF/template/include.jsp"%>
 
-<openmrs:require privilege="Manage Bahmni Sync" otherwise="/login.htm" redirect="/module/webservices/rest/settings.form" />
+<openmrs:require privilege="Manage Bahmni Sync" otherwise="/login.htm" redirect="/module/bahmnisyncmaster/config.form" />
 
 <%@ include file="/WEB-INF/template/header.jsp"%>
 <%@ include file="template/localHeader.jsp" %>
@@ -30,7 +30,7 @@
 }
 </style>
 
-<h2><spring:message code="bahmnisyncmaster.master.config" /></h2>
+<h2>Master Configuration</h2>
 
 <spring:hasBindErrors name="globalPropertiesModel">
 	<spring:message code="fix.error"/>
@@ -40,13 +40,20 @@
 	<c:forEach var="prop" items="${globalPropertiesModel.properties}" varStatus="varStatus">
 		<spring:nestedPath path="properties[${varStatus.index}]">
 			<div class="settingRow">
-				<h4 class="settingName"><spring:message code="${prop.property}.label" /></h4>
+				<h4 class="settingName"><%-- <spring:message code="${prop.property}.label" /> --%>
+				<c:if test="${prop.property == 'bahmnisyncmaster.debezium.connect.url' }">
+					Debezium Connect's URL
+				</c:if>
+				<c:if test="${prop.property == 'bahmnisyncmaster.kafka.url' }">
+					KAFKA URL
+				</c:if>
+				<c:if test="${prop.property == 'bahmnisyncmaster.sync.table' }">
+					Table Data to Push
+				</c:if>
+				</h4>
 				<span class="settingValue">
 					<spring:bind path="propertyValue">
 						<c:set var="inputSize" value="50" scope="page" />
-						<c:if test="${prop.property == 'bahmnisyncmaster.sync.chunk.size' }">
-                             <c:set var="inputSize" value="3" />
-                        </c:if>
 						<input type="text" name="${status.expression}" value="${status.value}" size="${inputSize}">
 						<form:errors cssClass="error"/>
 					</spring:bind>
