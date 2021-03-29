@@ -76,7 +76,6 @@ public class MasterSyncController {
 	public String postDebeziumObjects(HttpServletRequest request,
             @RequestBody ArrayList<Map<String, Object>> debeziumObjects) throws Exception {
 
-	
 		  for(Map<String, Object> obj : debeziumObjects){
 			  dataPushService.startDataPush(obj);
 		  }
@@ -84,12 +83,21 @@ public class MasterSyncController {
 		return "DONE!";
 	}
 	
-	@RequestMapping(value = "/debeziumObjects/{serverid}/{chunksize}", method = RequestMethod.GET)
+	@RequestMapping(value = "/debeziumObjects/{serverid}/{table}/{chunksize}", method = RequestMethod.GET)
 	@ResponseBody
-    public String getDebeziumObjects(HttpServletRequest request, @PathVariable(value="serverid") String serverid, @PathVariable(value="chunksize") Integer chunksize) throws Exception {
+    public String getDebeziumObjects(HttpServletRequest request, @PathVariable(value="serverid") String serverid, @PathVariable(value="table") String table, @PathVariable(value="chunksize") Integer chunksize) throws Exception {
 			
-		ArrayList<JSONObject> s = dataPullService.startDataPull(serverid, chunksize);
+		ArrayList<JSONObject> s = dataPullService.startDataPull(serverid, chunksize,table);        
 		return s.toString();
+        
+    }
+	
+	@RequestMapping(value = "/tablestopull", method = RequestMethod.GET)
+	@ResponseBody
+    public String getTablesToPull(HttpServletRequest request) throws Exception {
+			
+		String topics =  Context.getAdministrationService().getGlobalProperty(BahmniSyncMasterConstants.SYNC_TABLE_GLOBAL_PROPERTY_NAME);      
+		return topics;
         
     }
 }

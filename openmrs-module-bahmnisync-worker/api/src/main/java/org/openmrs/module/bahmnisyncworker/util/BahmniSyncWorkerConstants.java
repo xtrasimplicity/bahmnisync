@@ -20,4 +20,7 @@ public class BahmniSyncWorkerConstants {
 	public static final String CHUNK_SIZE_GLOBAL_PROPERTY_NAME = MODULE_ID + ".sync.chunk.size";
 	
 	public static final String DEBEZIUM_CONNECT_URL_GLOBAL_PROPERTY_NAME = MODULE_ID + ".debezium.connect.url";
+	
+	/* Privileges*/
+	public static final String MANAGE_BAHMNI_SYNC_PRIVILEGE = "Manage Bahmni Sync";
 }

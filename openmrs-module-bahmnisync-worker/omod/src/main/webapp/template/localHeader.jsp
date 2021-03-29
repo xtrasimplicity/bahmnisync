@@ -19,15 +19,13 @@
 	<li
 			<c:if test='<%= request.getRequestURI().contains("/config") %>'>class="active"</c:if>>
 		<a
-				href="${pageContext.request.contextPath}/module/bahmnisyncworker/config.form"><spring:message
-				code="bahmnisyncworker.config"/></a>
+				href="${pageContext.request.contextPath}/module/bahmnisyncworker/config.form">Config</a>
 	</li>
 	
 	<li
 			<c:if test='<%= request.getRequestURI().contains("/sync") %>'>class="active"</c:if>>
 		<a
-				href="${pageContext.request.contextPath}/module/bahmnisyncworker/sync.form"><spring:message
-				code="bahmnisyncworker.sync"/></a>
+				href="${pageContext.request.contextPath}/module/bahmnisyncworker/sync.form">Sync</a>
 	</li>
 
 </ul>

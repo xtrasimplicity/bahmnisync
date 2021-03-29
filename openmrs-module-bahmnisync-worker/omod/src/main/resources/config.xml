@@ -52,7 +52,7 @@
 	
 	<globalProperty>
 		<property>@MODULE_ID@.kafka.url</property>
-		<defaultValue></defaultValue>
+		<defaultValue>localhost:9092</defaultValue>
 		<description>
 			Kafka Server url
 		</description>
@@ -60,7 +60,7 @@
 	
 	<globalProperty>
 		<property>@MODULE_ID@.sync.table</property>
-		<defaultValue></defaultValue>
+		<defaultValue>dbserver1.openmrs.person,dbserver1.openmrs.person_name,dbserver1.openmrs.person_address,dbserver1.openmrs.person_attribute,dbserver1.openmrs.users,dbserver1.openmrs.provider,dbserver1.openmrs.patient,dbserver1.openmrs.patient_identifier,dbserver1.openmrs.encounter,dbserver1.openmrs.encounter_provider,dbserver1.openmrs.obs</defaultValue>
 		<description>
 			List of table (comma separated), data to be pushed to master 
 		</description>

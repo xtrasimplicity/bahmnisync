@@ -20,8 +20,10 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.URL;
 import java.net.UnknownHostException;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Future;
@@ -35,6 +37,7 @@ import org.openmrs.GlobalProperty;
 import org.openmrs.api.APIException;
 import org.openmrs.api.AdministrationService;
 import org.openmrs.api.context.Context;
+import org.openmrs.module.bahmnisyncworker.BahmniSyncWorkerLog;
 import org.openmrs.module.bahmnisyncworker.BahmniSyncWorkerService;
 import org.openmrs.module.bahmnisyncworker.util.BahmniSyncWorkerConstants;
 import org.openmrs.web.WebConstants;
@@ -45,6 +48,7 @@ import org.springframework.validation.Errors;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.WebRequest;
@@ -73,8 +77,25 @@ public class WorkerSyncController {
 	 */
 	@RequestMapping(method = RequestMethod.GET, value = "module/bahmnisyncworker/sync.form")
 	public String showForm(final ModelMap modelMap) {
-		modelMap.addAttribute("allowUpload", "what you need");
-		modelMap.addAttribute("disallowUpload", "what you need");
+		
+		List<BahmniSyncWorkerLog> logs = syncWorkerService.getAllBahmniSyncWorkerLog();
+		if(logs.size() == 0){
+		
+			modelMap.addAttribute("syncDate", "-");
+			modelMap.addAttribute("syncStatus", "-");
+			
+		} else {
+			
+			BahmniSyncWorkerLog log = logs.get(0);
+			
+			modelMap.addAttribute("syncDate", log.getLogDateTime());
+			
+			if(log.getMessage().contains("Failed"))
+				modelMap.addAttribute("syncStatus", "Failed");
+			else
+				modelMap.addAttribute("syncStatus", "Success");
+			
+		}
 		return SUCCESS_FORM_VIEW;
 	}
 	
@@ -82,10 +103,16 @@ public class WorkerSyncController {
 	public @ResponseBody
 	Map<String, String> startDataPush() {
 		
-		syncWorkerService.startDataPush();
-		
-        Map<String, String> results = new HashMap<>();
-		results.put("ready", "yes");
+		Map<String, String> results = new HashMap<>();		
+		try{
+
+			syncWorkerService.startDataPush();
+			results.put("ready", "yes");
+					
+		}catch(Exception e){
+			results.put("ready", "no");
+			log.error(e);
+		}
 		
 		return results;
 	}
@@ -109,26 +136,33 @@ public class WorkerSyncController {
 	@RequestMapping(method = RequestMethod.GET, value = "/module/bahmnisyncworker/syncready.form")
     public @ResponseBody Map<String, String> isSyncReady() {
 		
+		Map<String, String> results = new HashMap<>();
+				
 		String ready = "yes";
-		Set<String> props = new LinkedHashSet<String>();
-		props.add(BahmniSyncWorkerConstants.WORKER_NODE_ID_GLOBAL_PROPERTY_NAME);
-		props.add(BahmniSyncWorkerConstants.MASTER_URL_GLOBAL_PROPERTY_NAME);
-		props.add(BahmniSyncWorkerConstants.KAFKA_URL_GLOBAL_PROPERTY_NAME);
-		props.add(BahmniSyncWorkerConstants.SYNC_TABLE_GLOBAL_PROPERTY_NAME);
-		props.add(BahmniSyncWorkerConstants.CHUNK_SIZE_GLOBAL_PROPERTY_NAME);
-		props.add(BahmniSyncWorkerConstants.DEBEZIUM_CONNECT_URL_GLOBAL_PROPERTY_NAME);
-		
-		//remove the properties we dont want to edit
-		for (GlobalProperty gp : Context.getAdministrationService().getGlobalPropertiesByPrefix(
-		    BahmniSyncWorkerConstants.MODULE_ID)) {
-			if (props.contains(gp.getProperty()) && gp.getPropertyValue() == null)
-				ready = "no";
+		try{
 			
+			Set<String> props = new LinkedHashSet<String>();
+			props.add(BahmniSyncWorkerConstants.WORKER_NODE_ID_GLOBAL_PROPERTY_NAME);
+			props.add(BahmniSyncWorkerConstants.MASTER_URL_GLOBAL_PROPERTY_NAME);
+			props.add(BahmniSyncWorkerConstants.KAFKA_URL_GLOBAL_PROPERTY_NAME);
+			props.add(BahmniSyncWorkerConstants.SYNC_TABLE_GLOBAL_PROPERTY_NAME);
+			props.add(BahmniSyncWorkerConstants.CHUNK_SIZE_GLOBAL_PROPERTY_NAME);
+			props.add(BahmniSyncWorkerConstants.DEBEZIUM_CONNECT_URL_GLOBAL_PROPERTY_NAME);
+			
+			//remove the properties we dont want to edit
+			for (GlobalProperty gp : Context.getAdministrationService().getGlobalPropertiesByPrefix(
+			    BahmniSyncWorkerConstants.MODULE_ID)) {
+				if (props.contains(gp.getProperty()) && gp.getPropertyValue() == null){
+					ready = "no";
+				}
+				
+			}
+		}catch(Exception e){
+			ready = "no";
+			log.error(e);			
 		}
 
-        Map<String, String> results = new HashMap<>();
         results.put("ready", ready);
-        
         return results;
     }
 	
@@ -137,16 +171,25 @@ public class WorkerSyncController {
 		
 		String ready = "";
 		Set<String> props = new LinkedHashSet<String>();
+				
+		try{
+			
+			String gp = Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.MASTER_URL_GLOBAL_PROPERTY_NAME);
+			
+			URL url = new URL(gp);
+			HttpURLConnection huc = (HttpURLConnection) url.openConnection();
+			int responseCode = huc.getResponseCode();
+			if(responseCode == HttpURLConnection.HTTP_OK){
+				ready = "yes";
+			}
+			else{
+				ready = "no";
+			}
 		
-		String gp = Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.MASTER_URL_GLOBAL_PROPERTY_NAME);
-		
-		URL url = new URL(gp);
-		HttpURLConnection huc = (HttpURLConnection) url.openConnection();
-		int responseCode = huc.getResponseCode();
-		if(responseCode == HttpURLConnection.HTTP_OK)
-			ready = "yes";
-		else
+		}catch(Exception e){
 			ready = "no";
+			log.error(e);
+		}
 		 
         Map<String, String> results = new HashMap<>();
         results.put("ready", ready);
@@ -158,10 +201,21 @@ public class WorkerSyncController {
 	public @ResponseBody
 	Map<String, String> startDataPull() {
 		
-		syncWorkerService.startDataPull();
+		String ready = "";
+				
+		try{
+			syncWorkerService.startDataPull();
+			ready = "yes";
+			
+		}catch(Exception e){
+			ready = "no";
+			log.error(e);
+		}
+		
         Map<String, String> results = new HashMap<>();
-		results.put("ready", "yes");
+		results.put("ready", ready);
 		
 		return results;
 	}
+	
 }

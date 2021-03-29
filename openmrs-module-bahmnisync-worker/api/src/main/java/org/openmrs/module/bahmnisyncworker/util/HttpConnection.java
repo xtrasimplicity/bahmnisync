@@ -2,6 +2,7 @@ package org.openmrs.module.bahmnisyncworker.util;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.concurrent.TimeUnit;
 
 import org.json.JSONObject;
 
@@ -16,13 +17,13 @@ import okhttp3.Route;
 
 public class HttpConnection {
 	
+	public static OkHttpClient client = createAuthenticatedClient("admin", "Admin123");
+	
 	public static JSONObject doPost(String url, String json) {
 		JSONObject jsonObjectResp = null;
 		
 		try {
-			
-			OkHttpClient client = createAuthenticatedClient("admin", "Admin123");
-			
+						
 			MediaType JSON = MediaType.parse("application/json; charset=utf-8");
 			
 			okhttp3.RequestBody body = RequestBody.create(JSON, json);
@@ -46,8 +47,6 @@ public class HttpConnection {
 	
 	public static String doGetRequest(String url) throws IOException {
 		Request request = new Request.Builder().url(url).build();
-		
-		 OkHttpClient client = createAuthenticatedClient("admin", "Admin123");
 		Response response = client.newCall(request).execute();
 		return response.body().string();
 	}
@@ -55,7 +54,11 @@ public class HttpConnection {
 	private static OkHttpClient createAuthenticatedClient(final String username,
 	        final String password) {
 	    // build client with authentication information.
-	    OkHttpClient httpClient = new OkHttpClient.Builder().authenticator(new Authenticator() {
+	    OkHttpClient httpClient = new OkHttpClient.Builder()
+	    		.connectTimeout(5, TimeUnit.MINUTES) // connect timeout
+	            .writeTimeout(5, TimeUnit.MINUTES) // write timeout
+	            .readTimeout(5, TimeUnit.MINUTES) // read timeout
+	    		.authenticator(new Authenticator() {
 	        public Request authenticate(Route route, Response response) throws IOException {
 	            String credential = Credentials.basic(username, password);
 	            if (responseCount(response) >= 3) {

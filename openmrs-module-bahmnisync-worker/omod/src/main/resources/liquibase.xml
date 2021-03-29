@@ -21,11 +21,11 @@
 			Creating the bahmnisyncworker_log table
 		</comment>
 		<createTable tableName="bahmnisyncworker_log">
-			<column name="bahmnisync_log_id" type="int">
+			<column name="bahmnisync_log_id" type="int" autoIncrement="true">
 				<constraints primaryKey="true" nullable="false"/>
 			</column>
 			<column name="log_datetime" type="datetime"/>
-			<column name="log_message" type="varchar(5000)"/>
+			<column name="message" type="varchar(5000)"/>
 		</createTable>
     </changeSet>
  

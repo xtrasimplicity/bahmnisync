@@ -42,6 +42,8 @@ public class BahmniSyncClientDataPush {
     	MASTER_URL = BahmniSyncClient.appProps.getProperty("master.url");
     	GROUP_ID = BahmniSyncClient.appProps.getProperty("kafka.consumer.groupid");
     	MAX_POLL_SIZE = BahmniSyncClient.appProps.getProperty("kafka.consumer.chunk.size");
+    	
+    	System.out.println();
 
         final Consumer<String, String> consumer = createConsumer();
 

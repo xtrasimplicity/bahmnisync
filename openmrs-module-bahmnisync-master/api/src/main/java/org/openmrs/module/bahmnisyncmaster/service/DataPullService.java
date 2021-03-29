@@ -5,8 +5,10 @@ import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -15,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.TimeZone;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -30,6 +33,7 @@ import org.hibernate.criterion.Restrictions;
 import org.hibernate.jdbc.Work;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.openmrs.annotation.Authorized;
 import org.openmrs.api.APIException;
 import org.openmrs.api.context.Context;
 import org.openmrs.api.db.hibernate.DbSessionFactory;
@@ -49,135 +53,169 @@ public class DataPullService  {
 	ArrayList<JSONObject> postObjects = new ArrayList<JSONObject>();
 	
 	@Transactional
-	public ArrayList<JSONObject> startDataPull(final String serverid, final int chunckSize) {
+    @Authorized(BahmniSyncMasterConstants.MANAGE_BAHMNI_SYNC_PRIVILEGE)
+	public ArrayList<JSONObject> startDataPull(final String serverid, final int chunckSize, final String table) {
 
 		sessionFactory.getCurrentSession().doWork(new Work() {
 			
-			public void execute(Connection connection) {
+			public void execute(Connection con) {
 				
-				try {
-					startConsumer(connection, serverid, chunckSize);
-				} catch (InstantiationException | IllegalAccessException | ClassNotFoundException | SQLException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
+					postObjects.clear();					
+		            final Consumer<String, String> consumer = createConsumer( serverid,  chunckSize, table);
+		                              
+		            int i = 0; 
+		             do{   
+		            	//int i = 0; 
+		            	ConsumerRecords<String,String> records = consumer.poll(Duration.ofMillis(100));
+		            	
+		            	if(records.isEmpty())
+		            		i++;
+		            	
+		            	if(i > 2)
+		            		break;
+		            	 
+		                for(ConsumerRecord<String,String> record: records){   
+		                		                	
+		                	JSONObject postJB = new JSONObject();
+		                	
+		                	System.out.println("COUNT: " + records.count());
+		                	
+		                	if(record.value() == null) 
+		                		continue;
+		                	
+		                	JSONObject json = new JSONObject(record.value());  
+		                    JSONObject payload = json.getJSONObject("payload");
+		                    String db = payload.getJSONObject("source").getString("db");
+		                    String table = payload.getJSONObject("source").getString("table");
+		                    String pkColumn = null;
+							try {
+								pkColumn = getPrimaryKey(table, con);
+							} catch (InstantiationException | IllegalAccessException | ClassNotFoundException
+									| SQLException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}
+							
+							if(payload.getString("op").equals("r"))
+								continue;
+							
+		                    JSONArray fkJsonArray = new JSONArray();
+		                    JSONObject jsonDataAfter = new JSONObject();
+		                    JSONObject jsonDataBefore = new JSONObject();
+		                    
+		                    JSONObject schema = json.getJSONObject("schema");
+		                    
+		                    if(!payload.isNull("after"))
+		                    	jsonDataAfter = payload.getJSONObject("after");
+		                    
+		                    if(!payload.isNull("before"))
+		                    	jsonDataBefore = payload.getJSONObject("before");
+		                    
+		                    if(!payload.getString("op").equals("d")){
+		                        
+		                        String query = "SELECT " +
+		                        				"TABLE_NAME,COLUMN_NAME,CONSTRAINT_NAME, REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME " +
+		                        				"FROM " +
+		                        				"INFORMATION_SCHEMA.KEY_COLUMN_USAGE " +
+		                        				"WHERE "+
+		                        				"REFERENCED_TABLE_SCHEMA = '" + db +"' AND " +
+		                        				"TABLE_NAME = '"+table+"';";
+		                        
+		                        Object[][] foreignkeys = DatabaseUtil.getTableData(query,con);
+		                                        	                
+		                        for (Object[] fk : foreignkeys){
+		                        	
+		                          JSONObject fkJSONObject = new JSONObject();
+		                          
+		                          String colName = String.valueOf(fk[1]);
+		                          String referencedTableNme = String.valueOf(fk[3]);
+		                          String referencedColName = String.valueOf(fk[4]);
+		                          
+		                          String dt = getColumnDataType(json.getJSONObject("schema"),colName);
+		                          if(dt.equals(DataType.INT32.label)){
+		                        	  Object fkValue = payload.getJSONObject("after").get(colName);
+		                        	  if(!fkValue.equals(null))	{
+		                        		  String fktableReference = "SELECT uuid " + 
+		          		  					"from "+ db + "." + referencedTableNme + " " +
+		          		  					"where " + referencedColName + " = " + fkValue;
+		                        	  	String uuid = getValue(fktableReference, con);
+		                        	  	fkJSONObject.put("COLUMN_NAME", colName);
+		                                fkJSONObject.put("REFERENCED_TABLE_NAME", referencedTableNme);
+		                                fkJSONObject.put("REFERENCED_COLUMN_NAME", referencedColName);
+		                        	  	fkJSONObject.put("REFERENCED_UUID", uuid);
+		                        	  	jsonDataAfter.put(colName, uuid);
+		                        	  	fkJsonArray.put(fkJSONObject);
+		                        	  }
+		                          }
+		                        
+		                       }
+		                          
+		                        JSONArray fieldsArray = getJSONArrayFromSchema(schema,"after");
+		                        for(int j=0; j<fieldsArray.length(); j++){
+		                    		JSONObject jObj = fieldsArray.getJSONObject(j);
+		                			String cName = jObj.getString("field");
+		                			
+		                			String datatype = getColumnDataType(schema,cName);
+		                			if(datatype.equals(DataType.INT32.label) && cName.equals(pkColumn))
+		                				jsonDataAfter.put(cName, "PK");  
+		                			
+		                			if(datatype.equals(DataType.INT32.label) && !cName.equals(pkColumn)  && !jsonDataAfter.get(cName).equals(null)){
+	        		    				if(jsonDataAfter.get(cName) instanceof java.lang.Integer){
+	        		    					String className = getColumnClassName(schema,cName);
+	        		    					if(className != null && className.equals("org.apache.kafka.connect.data.Date")){
+		        		    					Integer intDate = jsonDataAfter.getInt(cName);
+		        		    					long epochMillis = TimeUnit.DAYS.toMillis(intDate);
+		        		    					Date date = new Date(epochMillis);
+		        		    					DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");  
+		        		    		            String strDate = dateFormat.format(date);  
+			        			                jsonDataAfter.put(cName, strDate);
+	        		    					}
+	        		    				}
+	        		    			}
+		                			
+		                			if(datatype.equals(DataType.INT64.label) && !jsonDataAfter.get(cName).equals(null)){
+		            	                String strDate = convertTimeWithTimeZome(jsonDataAfter.getLong(cName));
+		            	                jsonDataAfter.put(cName, strDate);
+		            				 } 
+		                			
+		                			if(datatype.equals(DataType.INT16.label) && !jsonDataAfter.get(cName).equals(null)){
+		                				if (jsonDataAfter.getInt(cName) == 0)
+		                					jsonDataAfter.put(cName, "false");
+		            				 	else
+		            				 		jsonDataAfter.put(cName, "true");
+		            				 } 
+		            			}
+		                    
+		                   } 
+		                    
+		                    String queryForPost = getQueryForPost(payload.getString("op"), payload.getJSONObject("source").getString("table"), schema, jsonDataAfter, 
+		                    		jsonDataBefore, pkColumn, fkJsonArray);
+		                    
+		                    postJB.put("fk", fkJsonArray);
+		                    postJB.put("data", jsonDataAfter);
+		                    postJB.put("op", payload.getString("op"));
+		                    postJB.put("db", payload.getJSONObject("source").getString("db"));
+		                    postJB.put("table", payload.getJSONObject("source").getString("table"));
+		                    postJB.put("pk", pkColumn);
+		                    postJB.put("query", queryForPost);
+		                    
+		                    
+		                    postObjects.add(postJB);
+		            
+		            	}
+		             }while(postObjects.size() < chunckSize);
+		            	
+		             consumer.close(); 
 			}
 		});
+		System.out.println("-------------------------------------"); 
+		System.out.println("Data from master"); 
+		System.out.println(postObjects); 
+		System.out.println("-------------------------------------");
 		return postObjects;
 	}
 	
-	private void startConsumer(Connection con, String serverid, int chunckSize) throws InstantiationException, IllegalAccessException, ClassNotFoundException, SQLException{
-		final Consumer<String, String> consumer = createConsumer( serverid,  chunckSize);
-        ConsumerRecords<String,String> records = consumer.poll(10000);
-        
-        for(ConsumerRecord<String,String> record: records){   
-        	
-        	JSONObject postJB = new JSONObject();
-        	
-        	if(record.value() == null) 
-        		continue;
-        	
-        	JSONObject json = new JSONObject(record.value());  
-            JSONObject payload = json.getJSONObject("payload");
-            String db = payload.getJSONObject("source").getString("db");
-            String table = payload.getJSONObject("source").getString("table");
-            String pkColumn = getPrimaryKey(table, con);
-            JSONArray fkJsonArray = new JSONArray();
-            JSONObject jsonDataAfter = new JSONObject();
-            JSONObject jsonDataBefore = new JSONObject();
-            
-            JSONObject schema = json.getJSONObject("schema");
-            
-            if(!payload.isNull("after"))
-            	jsonDataAfter = payload.getJSONObject("after");
-            
-            if(!payload.isNull("before"))
-            	jsonDataBefore = payload.getJSONObject("before");
-            
-            if(!payload.getString("op").equals("d")){
-                
-                String query = "SELECT " +
-                				"TABLE_NAME,COLUMN_NAME,CONSTRAINT_NAME, REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME " +
-                				"FROM " +
-                				"INFORMATION_SCHEMA.KEY_COLUMN_USAGE " +
-                				"WHERE "+
-                				"REFERENCED_TABLE_SCHEMA = '" + db +"' AND " +
-                				"TABLE_NAME = '"+table+"';";
-                
-                Object[][] foreignkeys = DatabaseUtil.getTableData(query,con);
-                                	                
-                for (Object[] fk : foreignkeys){
-                	
-                  JSONObject fkJSONObject = new JSONObject();
-                  
-                  String colName = String.valueOf(fk[1]);
-                  String referencedTableNme = String.valueOf(fk[3]);
-                  String referencedColName = String.valueOf(fk[4]);
-                  
-                  String dt = getColumnDataType(json.getJSONObject("schema"),colName);
-                  if(dt.equals(DataType.INT32.label)){
-                	  Object fkValue = payload.getJSONObject("after").get(colName);
-                	  if(!fkValue.equals(null))	{
-                		  String fktableReference = "SELECT uuid " + 
-  		  					"from "+ db + "." + referencedTableNme + " " +
-  		  					"where " + referencedColName + " = " + fkValue;
-                	  	String uuid = getValue(fktableReference, con);
-                	  	fkJSONObject.put("COLUMN_NAME", colName);
-                        fkJSONObject.put("REFERENCED_TABLE_NAME", referencedTableNme);
-                        fkJSONObject.put("REFERENCED_COLUMN_NAME", referencedColName);
-                	  	fkJSONObject.put("REFERENCED_UUID", uuid);
-                	  	jsonDataAfter.put(colName, uuid);
-                	  	fkJsonArray.put(fkJSONObject);
-                	  }
-                  }
-                
-               }
-                  
-                JSONArray fieldsArray = getJSONArrayFromSchema(schema,"after");
-                for(int j=0; j<fieldsArray.length(); j++){
-            		JSONObject jObj = fieldsArray.getJSONObject(j);
-        			String cName = jObj.getString("field");
-        			
-        			String datatype = getColumnDataType(schema,cName);
-        			if(datatype.equals(DataType.INT32.label) && cName.equals(pkColumn))
-        				jsonDataAfter.put(cName, "PK");        			
-        			
-        			if(datatype.equals(DataType.INT64.label) && !jsonDataAfter.get(cName).equals(null)){
-    	                String strDate = convertTimeWithTimeZome(jsonDataAfter.getLong(cName));
-    	                jsonDataAfter.put(cName, strDate);
-    				 } 
-        			
-        			if(datatype.equals(DataType.INT16.label) && !jsonDataAfter.get(cName).equals(null)){
-        				if (jsonDataAfter.getInt(cName) == 0)
-        					jsonDataAfter.put(cName, "false");
-    				 	else
-    				 		jsonDataAfter.put(cName, "true");
-    				 } 
-    			}
-            
-           } 
-            
-            String queryForPost = getQueryForPost(payload.getString("op"), payload.getJSONObject("source").getString("table"), schema, jsonDataAfter, 
-            		jsonDataBefore, pkColumn, fkJsonArray);
-            
-            postJB.put("fk", fkJsonArray);
-            postJB.put("data", jsonDataAfter);
-            postJB.put("op", payload.getString("op"));
-            postJB.put("db", payload.getJSONObject("source").getString("db"));
-            postJB.put("table", payload.getJSONObject("source").getString("table"));
-            postJB.put("pk", pkColumn);
-            postJB.put("query", queryForPost);
-            
-            
-            postObjects.add(postJB);
-    
-    	}
-    	
-    	consumer.commitAsync();
-    	consumer.close();  
-	}
-	
-	private Consumer<String, String> createConsumer(String serverid, int chunckSize) {
+	private Consumer<String, String> createConsumer(String serverid, int chunckSize, String table) {
     	final Properties props = new Properties();
     	
     	props.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,Context.getAdministrationService().getGlobalProperty(BahmniSyncMasterConstants.KAFKA_URL_GLOBAL_PROPERTY_NAME));  
@@ -189,10 +227,11 @@ public class DataPullService  {
 
     	// Create the consumer using props.
         KafkaConsumer<String,String> consumer= new KafkaConsumer<String,String>(props);  
+        
+		String TOPICS =  Context.getAdministrationService().getGlobalProperty(BahmniSyncMasterConstants.SYNC_TABLE_GLOBAL_PROPERTY_NAME);
 
     	// Subscribe to the topic
-        String[] array = Context.getAdministrationService().getGlobalProperty(BahmniSyncMasterConstants.SYNC_TABLE_GLOBAL_PROPERTY_NAME).split(",");
-        consumer.subscribe(Arrays.asList(array));  
+		consumer.subscribe(Arrays.asList(table));  
     	return consumer;
      }
 	
@@ -259,7 +298,7 @@ public class DataPullService  {
 			cal.setTimeInMillis(time);
 			StringBuilder stringDate = new StringBuilder(cal.get(Calendar.YEAR) + "-");
 			
-			if (cal.get(Calendar.MONTH) < 10)
+			if (cal.get(Calendar.MONTH) < 9)
 				stringDate.append("0" + (cal.get(Calendar.MONTH) + 1) + "-");
 			else
 				stringDate.append((cal.get(Calendar.MONTH) + 1) + "-");
@@ -333,6 +372,16 @@ public class DataPullService  {
 				JSONObject jObj = fieldsArray.getJSONObject(j);
 				String cName = jObj.getString("field");
 				
+				if(pkColumn.equalsIgnoreCase(cName)){
+					
+					if (isForeignKey(cName, fkJsonArray)) {
+						fieldsString.append(cName + ",");
+						valuesString.append("<" + cName + ">" + ",");
+						continue;
+					}
+					
+				}
+				
 				if ((!pkColumn.equalsIgnoreCase(cName)) && (!data.get(cName).equals(null))) {
 					fieldsString.append(cName + ",");
 					
@@ -343,7 +392,10 @@ public class DataPullService  {
 					
 					String datatype = getColumnDataType(schema, cName);
 					if (datatype.equals(DataType.INT32.label))
-						valuesString.append(data.getInt(cName) + ",");
+						if (data.get(cName) instanceof Integer)
+							valuesString.append(data.getInt(cName) + "',");
+						else
+							valuesString.append("'" + data.getString(cName) + "',");
 					else if (datatype.equals(DataType.STRING.label))
 						valuesString.append("'" + data.getString(cName) + "',");
 					else if (datatype.equals(DataType.INT64.label)) {
@@ -394,7 +446,10 @@ public class DataPullService  {
 					
 					String datatype = getColumnDataType(schema, cName);
 					if (datatype.equals(DataType.INT32.label))
-						updateQuery.append(data.getInt(cName) + ",");
+						if (data.get(cName) instanceof Integer)
+							updateQuery.append(data.getInt(cName) + "',");
+						else
+							updateQuery.append("'" + data.getString(cName) + "',");
 					else if (datatype.equals(DataType.STRING.label))
 						updateQuery.append("'" + data.getString(cName) + "',");
 					else if (datatype.equals(DataType.INT64.label)) {
@@ -436,6 +491,24 @@ public class DataPullService  {
 			}
 			
 			return false;
+		}
+		
+		private static String getColumnClassName(JSONObject schema, String columnName) {
+			
+			JSONArray fieldsArray = getJSONArrayFromSchema(schema, "after");
+			if (fieldsArray == null)
+				return null;
+			
+			for (int j = 0; j < fieldsArray.length(); j++) {
+				JSONObject jObj = fieldsArray.getJSONObject(j);
+				String colName = jObj.getString("field");
+				if (colName.equals(columnName)) {
+					if(jObj.has("name"))
+						return jObj.getString("name");
+				}
+			}
+			
+			return null;
 		}
 
 }

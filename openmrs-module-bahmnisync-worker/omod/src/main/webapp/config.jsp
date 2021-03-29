@@ -30,7 +30,7 @@
 }
 </style>
 
-<h2><spring:message code="bahmnisyncworker.worker.config" /></h2>
+<h2>Worker Configuration</h2>
 
 <spring:hasBindErrors name="globalPropertiesModel">
 	<spring:message code="fix.error"/>
@@ -40,7 +40,28 @@
 	<c:forEach var="prop" items="${globalPropertiesModel.properties}" varStatus="varStatus">
 		<spring:nestedPath path="properties[${varStatus.index}]">
 			<div class="settingRow">
-				<h4 class="settingName"><spring:message code="${prop.property}.label" /></h4>
+				<h4 class="settingName"><%-- <spring:message code="${prop.property}.label" /> --%>
+				
+				<c:if test="${prop.property == 'bahmnisyncworker.debezium.connect.url' }">
+					Debezium Connect's URL
+				</c:if>
+				<c:if test="${prop.property == 'bahmnisyncworker.kafka.url' }">
+					KAFKA URL
+				</c:if>
+				<c:if test="${prop.property == 'bahmnisyncworker.master.url' }">
+					Master node's URL
+				</c:if>
+				<c:if test="${prop.property == 'bahmnisyncworker.sync.table' }">
+					Table Data to Push
+				</c:if>
+				<c:if test="${prop.property == 'bahmnisyncworker.sync.chunk.size' }">
+					Chunk size
+				</c:if>
+				<c:if test="${prop.property == 'bahmnisyncworker.worker.node.id' }">
+					Worker ID
+				</c:if>
+				
+				</h4>
 				<span class="settingValue">
 					<spring:bind path="propertyValue">
 						<c:set var="inputSize" value="50" scope="page" />

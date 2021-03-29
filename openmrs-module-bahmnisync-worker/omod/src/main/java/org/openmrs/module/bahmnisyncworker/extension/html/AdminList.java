@@ -36,7 +36,7 @@ public class AdminList extends AdministrationSectionExt {
 	 * @see AdministrationSectionExt#getTitle()
 	 */
 	public String getTitle() {
-		return "bahmnisyncworker.title";
+		return "Bahmni Sync Worker";
 	}
 	
 	/**
@@ -44,8 +44,8 @@ public class AdminList extends AdministrationSectionExt {
 	 */
 	public Map<String, String> getLinks() {
 		LinkedHashMap<String, String> map = new LinkedHashMap<String, String>();
-		map.put("module/bahmnisyncworker/sync.form", "bahmnisyncworker.sync.process");
-		map.put("module/bahmnisyncworker/config.form", "bahmnisyncworker.worker.config");
+		map.put("module/bahmnisyncworker/sync.form", "Sync Process");
+		map.put("module/bahmnisyncworker/config.form", "Worker Configuration");
 		return map;
 	}
 	

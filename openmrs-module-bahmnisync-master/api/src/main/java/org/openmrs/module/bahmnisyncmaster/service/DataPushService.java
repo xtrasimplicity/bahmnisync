@@ -2,12 +2,15 @@ package org.openmrs.module.bahmnisyncmaster.service;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.Timestamp;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.TimeZone;
 
 import org.codehaus.jackson.map.ObjectMapper;
 import org.hibernate.Criteria;
@@ -15,6 +18,7 @@ import org.hibernate.criterion.Criterion;
 import org.hibernate.criterion.LogicalExpression;
 import org.hibernate.criterion.Restrictions;
 import org.hibernate.jdbc.Work;
+import org.openmrs.annotation.Authorized;
 import org.openmrs.api.APIException;
 import org.openmrs.api.db.hibernate.DbSessionFactory;
 import org.openmrs.module.bahmnisyncmaster.BahmniSyncMasterLog;
@@ -24,6 +28,7 @@ import org.openmrs.module.bahmnisyncmaster.util.DatabaseUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.openmrs.module.bahmnisyncmaster.util.BahmniSyncMasterConstants;
 
 @Service
 public class DataPushService  {
@@ -31,30 +36,48 @@ public class DataPushService  {
 	@Autowired
 	DbSessionFactory sessionFactory;
 	
+	@Authorized(BahmniSyncMasterConstants.MANAGE_BAHMNI_SYNC_PRIVILEGE)
 	public BahmniSyncMasterLog saveBahmniSyncMasterLog(BahmniSyncMasterLog log) throws APIException {
 		sessionFactory.getCurrentSession().saveOrUpdate(log);
 		return log;
 	}
 
+	@Authorized(BahmniSyncMasterConstants.MANAGE_BAHMNI_SYNC_PRIVILEGE)
 	public List<BahmniSyncMasterLog> getConflictBahmniSyncMasterLog() throws APIException {
 		Criteria criteria = sessionFactory.getCurrentSession().createCriteria(BahmniSyncMasterLog.class);
 		criteria.add(Restrictions.eq("status", "CONFLICT"));
 		return criteria.list();
 	}
 	
+	@Authorized(BahmniSyncMasterConstants.MANAGE_BAHMNI_SYNC_PRIVILEGE)
 	public List<BahmniSyncMasterLog> getAllBahmniSyncMasterLog() throws APIException {
 		Criteria criteria = sessionFactory.getCurrentSession().createCriteria(BahmniSyncMasterLog.class);
 		return criteria.list();
 	}
 	
 	@Transactional
+    @Authorized(BahmniSyncMasterConstants.MANAGE_BAHMNI_SYNC_PRIVILEGE)
 	public void startDataPush(final Map<String, Object> obj) {
 		sessionFactory.getCurrentSession().doWork(new Work() {
 			
 			public void execute(Connection connection) {
 				try {
+					System.out.println("-------------------------------------"); 
+					System.out.println("Data from client"); 
+					System.out.println(obj.size()); 
+					System.out.println("-------------------------------------"); 
 					DebeziumObject debeziumObject = getDebziumObjectFromMap(obj,connection);
-					executeDebeziumObject(debeziumObject, connection);				
+					executeDebeziumObject(debeziumObject, connection);	
+					
+					if (sessionFactory.getCurrentSession() != null) {
+						sessionFactory.getCurrentSession().clear(); // internal cache clear
+					}
+
+					if (sessionFactory.getHibernateSessionFactory().getCache() != null) {
+						sessionFactory.getHibernateSessionFactory().getCache().evictQueryRegions(); 
+						sessionFactory.getHibernateSessionFactory().getCache().evictEntityRegions();
+					}
+							
 				} catch (ParseException e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
@@ -88,6 +111,13 @@ public class DataPushService  {
 					String.valueOf(keys.get("REFERENCED_TABLE_NAME")) + " where uuid = '" + 
 					String.valueOf(keys.get("REFERENCED_UUID")) + "';";
 			String qValue = getValue(q,con);
+			
+			System.out.println(qValue);
+			System.out.println(String.valueOf(keys.get("REFERENCED_COLUMN_NAME")) );
+			System.out.println(String.valueOf(keys.get("REFERENCED_TABLE_NAME")));
+			System.out.println(String.valueOf(keys.get("REFERENCED_UUID")));
+			System.out.println(String.valueOf(keys.get("COLUMN_NAME")));
+			System.out.println(query);
 			
 			query = query.replace("<"+String.valueOf(keys.get("COLUMN_NAME")) +">", qValue);
 			
@@ -130,8 +160,12 @@ public class DataPushService  {
 	            String dateWorker = (String)dbObj.getData().get("date_changed"); 
 				String dateServer = getValue("SELECT date_changed from " + dbObj.getTable() + " where uuid = '" + (String)dbObj.getData().get("uuid")+ "'", con);
 				
-				Date dateUpdatedWorker = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(dateWorker);  
-				Date dateUpdatedServer = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(dateServer);
+				Date dateUpdatedWorker = null;
+				if(dateWorker != null)
+					dateUpdatedWorker = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(dateWorker); 
+				Date dateUpdatedServer = null;
+				if(dateServer != null)
+					dateUpdatedServer = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(dateServer);
 				
 			    Date dateVoidedWorker = null;
 			    Date dateVoidedServer = null;
@@ -141,29 +175,34 @@ public class DataPushService  {
 		            String voidedWorker = (String)dbObj.getData().get("date_voided"); 
 					String voidedServer = getValue("SELECT date_voided from " + dbObj.getTable() + " where uuid = '" + (String)dbObj.getData().get("uuid")+ "'", con);
 					
-					dateVoidedWorker = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(voidedWorker);  
-					dateVoidedServer = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(voidedServer);  
+					if(voidedWorker != null)
+						dateVoidedWorker = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(voidedWorker); 
+					if(voidedServer != null)
+						dateVoidedServer = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(voidedServer);  
+				
 			    }
 			    else if(dbObj.getData().containsKey("date_retired") && dbObj.getData().get("date_retired")!= null){
 			    
 		            String voidedWorker = (String)dbObj.getData().get("date_retired");
 					String voidedServer = getValue("SELECT date_retired from " + dbObj.getTable() + " where uuid = '" + (String)dbObj.getData().get("uuid")+ "'", con);
 					 
-					dateVoidedWorker = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(voidedWorker);  
-					dateVoidedServer = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(voidedServer); 
+					if(voidedWorker != null)
+						dateVoidedWorker = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(voidedWorker); 
+					if(voidedServer != null)
+						dateVoidedServer = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(voidedServer);  
+					
 			    }
 			    
 			    Date maxServerDate = max(dateUpdatedServer, dateVoidedServer);
 			    Date maxClientDate = max(dateUpdatedWorker, dateVoidedWorker);
 			    
 				Object[][] dataServer = DatabaseUtil.getTableData("SELECT * from " + dbObj.getTable() + " where uuid = '" + (String)dbObj.getData().get("uuid")+"'", con);
-
-			    String s = "";
-				Object f[] = dataServer[0];
-				for(int i =0; i<f.length; i++)
-					s = s + " " + f[i] + ",";
-			    
-			    if(maxClientDate.after(maxServerDate)){
+				
+			    if(maxServerDate == null){
+			    	ret = DatabaseUtil.runCommand(CommandType.UPDATE, dbObj.getQuery(),con);
+			    	getLogString(dbObj, "Kept the one form worker due to latest date.", "CONFLICT", con);
+			    }
+			    else if(maxClientDate.after(maxServerDate)){
 			    	ret = DatabaseUtil.runCommand(CommandType.UPDATE, dbObj.getQuery(),con);
 			    	getLogString(dbObj, "Kept the one form worker due to latest date.", "CONFLICT", con);	    
 			    }else{
@@ -186,7 +225,7 @@ public class DataPushService  {
 			
 			if(serverData.equals(clientData))
 				return;
-			
+						
 			ret = DatabaseUtil.runCommand(CommandType.CREATE, dbObj.getQuery(),con);
 			if(ret instanceof Exception)
 				getLogString(dbObj, ((Exception) ret).getMessage().toString(), "ERROR", con);
@@ -204,7 +243,7 @@ public class DataPushService  {
 		}
 	}
 	
-	public String getServerDataAsString(DebeziumObject dbObject, Connection con){
+	public String getServerDataAsString(DebeziumObject dbObject, Connection con) throws ParseException{
 		
 		String columnList = "";
 		for ( String key : dbObject.getData().keySet() ) {
@@ -237,10 +276,22 @@ public class DataPushService  {
 					}
 					else{
 						
-						if(dataServer[0][i] instanceof java.sql.Timestamp )
-							dataServer[0][i] = String.valueOf(dataServer[0][i]).substring(0, String.valueOf(dataServer[0][i]).length()-2);
 						
+						if(dataServer[0][i] instanceof java.sql.Timestamp ){
+							
+						    Timestamp timestamp = (Timestamp)dataServer[0][i];
+						    
+						    Calendar cal = Calendar.getInstance();
+						    cal.setTimeInMillis(timestamp.getTime());
+						    cal.add(Calendar.HOUR, -5);
+						    cal.add(Calendar.MINUTE, -30);
+						    dataServer[0][i] = new Timestamp(cal.getTime().getTime());				    
+						    
+						    dataServer[0][i] = String.valueOf(dataServer[0][i]).substring(0, String.valueOf(dataServer[0][i]).length()-2);
+							
+						}
 						serverData.append(key + "=" + dataServer[0][i] + ", ");
+						
 					}
 				}
 				i++;
@@ -251,7 +302,7 @@ public class DataPushService  {
 		return finalData ;
 	}
 	
-	public void getLogString(DebeziumObject dbObject, String message, String status, Connection con){
+	public void getLogString(DebeziumObject dbObject, String message, String status, Connection con) throws ParseException{
 		
 		BahmniSyncMasterLog log = new BahmniSyncMasterLog();
 		

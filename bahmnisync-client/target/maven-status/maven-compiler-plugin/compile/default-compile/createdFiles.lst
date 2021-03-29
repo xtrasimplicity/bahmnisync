@@ -1,5 +1,10 @@
+com\ihsinformatics\bahmnisyncclient\BahmniSyncClientDataPush.class
+com\ihsinformatics\bahmnisyncclient\connection\HTTPConnection.class
+com\ihsinformatics\bahmnisyncclient\BahmniSyncClientDataPull.class
 com\ihsinformatics\bahmnisyncclient\util\DatabaseUtil.class
+com\ihsinformatics\bahmnisyncclient\debezium\DebeziumService.class
 com\ihsinformatics\bahmnisyncclient\util\DatabaseUtil$1.class
 com\ihsinformatics\bahmnisyncclient\util\CommandType.class
 com\ihsinformatics\bahmnisyncclient\BahmniSyncClient.class
 com\ihsinformatics\bahmnisyncclient\util\DataType.class
+com\ihsinformatics\bahmnisyncclient\debezium\DebeziumObject.class

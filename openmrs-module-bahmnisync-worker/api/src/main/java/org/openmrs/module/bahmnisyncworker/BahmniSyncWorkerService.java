@@ -6,28 +6,30 @@ import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Timestamp;
+import java.text.DateFormat;
 import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.TimeZone;
+import java.util.concurrent.TimeUnit;
 
-import javax.swing.plaf.synth.ColorType;
-
-import org.apache.kafka.clients.consumer.Consumer;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.common.serialization.StringDeserializer;
-import org.codehaus.jackson.map.ObjectMapper;
+import org.hibernate.Criteria;
+import org.hibernate.criterion.Order;
 import org.hibernate.jdbc.Work;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.openmrs.annotation.Authorized;
+import org.openmrs.api.APIException;
 import org.openmrs.api.context.Context;
 import org.openmrs.api.db.hibernate.DbSessionFactory;
 import org.openmrs.module.bahmnisyncworker.util.BahmniSyncWorkerConstants;
@@ -38,6 +40,13 @@ import org.openmrs.module.bahmnisyncworker.util.HttpConnection;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.serialization.StringDeserializer;
+import org.codehaus.jackson.map.ObjectMapper;
 
 @Service
 public class BahmniSyncWorkerService  {
@@ -51,6 +60,19 @@ public class BahmniSyncWorkerService  {
 	@Autowired
 	DbSessionFactory sessionFactory;
 	
+	
+	public BahmniSyncWorkerLog saveBahmniSyncWorkerLog(BahmniSyncWorkerLog log) throws APIException {
+		sessionFactory.getCurrentSession().saveOrUpdate(log);
+		return log;
+	}
+	
+	public List<BahmniSyncWorkerLog> getAllBahmniSyncWorkerLog() throws APIException {
+		Criteria criteria = sessionFactory.getCurrentSession().createCriteria(BahmniSyncWorkerLog.class);
+		criteria.addOrder(Order.desc("logDateTime"));
+		return criteria.list();
+	}
+	
+	@Authorized(BahmniSyncWorkerConstants.MANAGE_BAHMNI_SYNC_PRIVILEGE)
 	@Transactional
 	public void startDataPush() {
 		sessionFactory.getCurrentSession().doWork(new Work() {
@@ -58,169 +80,336 @@ public class BahmniSyncWorkerService  {
 			public void execute(Connection connection) {
 				try {
 					startDataPush(connection);
-				} catch (SQLException | InstantiationException | IllegalAccessException | ClassNotFoundException e) {
+					
+					BahmniSyncWorkerLog logs = new BahmniSyncWorkerLog(new Date(),"Data Push Success!");
+					saveBahmniSyncWorkerLog(logs);
+					
+				} catch (SQLException | InstantiationException | IllegalAccessException | ClassNotFoundException | InterruptedException e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
+					BahmniSyncWorkerLog logs = new BahmniSyncWorkerLog(new Date(),"Failed during Data Push!");
+					saveBahmniSyncWorkerLog(logs);
 				}
 			}
 		});
 	}
 	
-	public boolean startDataPush(Connection con) throws InstantiationException, IllegalAccessException, ClassNotFoundException, SQLException {
+	@Authorized(BahmniSyncWorkerConstants.MANAGE_BAHMNI_SYNC_PRIVILEGE)
+    @Transactional
+	public void startDataPull() {
+			
+		sessionFactory.getCurrentSession().doWork(new Work() {
+			
+			public void execute(Connection connection) {
+				JSONArray jsonArray = new JSONArray();
+				
+				try {
+					String	tables = HttpConnection.doGetRequest(MASTER_URL+"/ws/rest/v1/bahmnisync/tablestopull");
+
+					System.out.println(tables);
+					String[] array = tables.split(",");
+					System.out.println(array);
+					
+					for(String table : array) {
+					
+					    do{
+	
+							String	s = HttpConnection.doGetRequest(MASTER_URL+"/ws/rest/v1/bahmnisync/debeziumObjects/"+GROUP_ID+"/"+table+"/"+MAX_POLL_SIZE);
+							System.out.println(s);
+							jsonArray = new JSONArray(s); 
+							
+							System.out.println("-------------------------------------"); 
+							System.out.println("Data from Master: " + table); 
+							System.out.println(jsonArray.length());
+							System.out.println("-------------------------------------"); 
+							
+							for(Object obj : jsonArray){
+					    		JSONObject jb = new JSONObject(obj.toString());
+					    		DebeziumObject debeziumObject = getDebziumObjectFromJSON(jb, connection);
+								executeDebeziumObject(debeziumObject,connection);
+							}
+							
+				    	}while(jsonArray.length() >= Integer.valueOf(MAX_POLL_SIZE));
+					}
+		    	
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+		    	
+		    	BahmniSyncWorkerLog logs = new BahmniSyncWorkerLog(new Date(),"Data Pull Success!");
+				saveBahmniSyncWorkerLog(logs);	
+				
+				if (sessionFactory.getCurrentSession() != null) {
+					sessionFactory.getCurrentSession().clear(); // internal cache clear
+				}
+
+				if (sessionFactory.getHibernateSessionFactory().getCache() != null) {
+					sessionFactory.getHibernateSessionFactory().getCache().evictQueryRegions(); 
+					sessionFactory.getHibernateSessionFactory().getCache().evictEntityRegions();
+				}
+				
+				return;
+			}
+		});
+	}
+	
+	public boolean startDataPush(final Connection con) throws InstantiationException, IllegalAccessException, ClassNotFoundException, SQLException, InterruptedException {
 		boolean flag = true;
 		
-		BOOTSTRAP_SERVERS = Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.KAFKA_URL_GLOBAL_PROPERTY_NAME);
+        
+        BOOTSTRAP_SERVERS = Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.KAFKA_URL_GLOBAL_PROPERTY_NAME);
 		TOPICS =  Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.SYNC_TABLE_GLOBAL_PROPERTY_NAME);
 		MASTER_URL = Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.MASTER_URL_GLOBAL_PROPERTY_NAME);
 		GROUP_ID = Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.WORKER_NODE_ID_GLOBAL_PROPERTY_NAME);
 		MAX_POLL_SIZE = Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.CHUNK_SIZE_GLOBAL_PROPERTY_NAME);
 		
-		Consumer<String, String> consumer = createConsumer();
+		String[] array = {"dbserver1.openmrs.person",
+                "dbserver1.openmrs.users,dbserver1.openmrs.person_name,dbserver1.openmrs.person_address,dbserver1.openmrs.person_attribute,dbserver1.openmrs.patient",
+				"dbserver1.openmrs.patient_identifier,dbserver1.openmrs.encounter",
+				"dbserver1.openmrs.obs"};
 		
-		ArrayList<JSONObject> postObjects = new ArrayList<JSONObject>();
+		//String[] array = TOPICS.split(",");
 		
-		ConsumerRecords<String,String> records = null;
-		
-		do {
+		for(String topic : array){
 			
-			records = consumer.poll(10000);  
-			for(ConsumerRecord<String,String> record: records){
-				JSONObject postJB = new JSONObject();
-		    	
-		    	if(record.value() == null) 
-		    		continue;
-		    	
-		        JSONObject json = new JSONObject(record.value());  
-		        JSONObject payload = json.getJSONObject("payload");
-		        String db = payload.getJSONObject("source").getString("db");
-		        String table = payload.getJSONObject("source").getString("table");
-		        String pkColumn = getPrimaryKey(table, con);
-		        JSONArray fkJsonArray = new JSONArray();
-		        JSONObject jsonDataAfter = new JSONObject();
-		        JSONObject jsonDataBefore = new JSONObject();
-		        
-		        System.out.println("Table  " + table);
-		        
-		        JSONObject schema = json.getJSONObject("schema");  
-		        
-		        if(!payload.isNull("after"))
-		        	jsonDataAfter = payload.getJSONObject("after");
-		        
-		        if(!payload.isNull("before"))
-		        	jsonDataBefore = payload.getJSONObject("before");
-		        
-		        if(!payload.getString("op").equals("d")){
-		        	                	                
-		            String query = "SELECT " +
-		            				"TABLE_NAME,COLUMN_NAME,CONSTRAINT_NAME, REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME " +
-		            				"FROM " +
-		            				"INFORMATION_SCHEMA.KEY_COLUMN_USAGE " +
-		            				"WHERE "+
-		            				"REFERENCED_TABLE_SCHEMA = '" + db +"' AND " +
-		            				"TABLE_NAME = '"+table+"';";
-		            
-		            Object[][] foreignkeys = getTableData(query,con);
-		                            	                
-		            for (Object[] fk : foreignkeys)
-		            {
-		            	
-		              JSONObject fkJSONObject = new JSONObject();
-		              
-		              String colName = String.valueOf(fk[1]);
-		              String referencedTableNme = String.valueOf(fk[3]);
-		              String referencedColName = String.valueOf(fk[4]);
-		              
-		              String dt = getColumnDataType(json.getJSONObject("schema"),colName);
-		              if(dt.equals(DataType.INT32.label)){
-		            	  Object fkValue = payload.getJSONObject("after").get(colName);
-		            	  if(!fkValue.equals(null))	{
-		            		  String fktableReference = "SELECT uuid " + 
-			  					"from "+ db + "." + referencedTableNme + " " +
-			  					"where " + referencedColName + " = " + fkValue;
-		            	  	String uuid = getValue(fktableReference, con);
-		            	  	fkJSONObject.put("COLUMN_NAME", colName);
-		                    fkJSONObject.put("REFERENCED_TABLE_NAME", referencedTableNme);
-		                    fkJSONObject.put("REFERENCED_COLUMN_NAME", referencedColName);
-		            	  	fkJSONObject.put("REFERENCED_UUID", uuid);
-		            	  	jsonDataAfter.put(colName, uuid);
-		            	  	fkJsonArray.put(fkJSONObject);
-		            	  }
-		              }
-		            
-		            }
-		            
-		            JSONArray fieldsArray = getJSONArrayFromSchema(schema,"after");
-		            for(int j=0; j<fieldsArray.length(); j++){
-		        		JSONObject jObj = fieldsArray.getJSONObject(j);
-		    			String cName = jObj.getString("field");
-		    			
-		    			String datatype = getColumnDataType(schema,cName);
-		    			if(datatype.equals(DataType.INT32.label) && cName.equals(pkColumn))
-		    				jsonDataAfter.put(cName, "PK");        			
-		    			
-		    			if(datatype.equals(DataType.INT64.label) && !jsonDataAfter.get(cName).equals(null)){
-			                String strDate = convertTimeWithTimeZome(jsonDataAfter.getLong(cName));
-			                jsonDataAfter.put(cName, strDate);
-						 } 
-		    			
-		    			if(datatype.equals(DataType.INT16.label) && !jsonDataAfter.get(cName).equals(null)){
-		    				if (jsonDataAfter.getInt(cName) == 0)
-		    					jsonDataAfter.put(cName, "false");
-						 	else
-						 		jsonDataAfter.put(cName, "true");
-						 } 
+			ArrayList<JSONObject> postObjects = new ArrayList<JSONObject>();
+    		Consumer<String, String> consumer = createConsumer(topic);
+    		ConsumerRecords<String,String> records = null;
+    		
+    		do{  
+            	
+                //polling
+                records=consumer.poll(Duration.ofMillis(100));  
+                for(ConsumerRecord<String,String> record: records){  
+                	
+                	JSONObject postJB = new JSONObject();
+                	
+                	if(record.value() == null) 
+    		    		continue;
+                	                    	
+                	JSONObject json = new JSONObject(record.value());  
+    		        JSONObject payload = json.getJSONObject("payload");
+    		        String db = payload.getJSONObject("source").getString("db");
+    		        String table = payload.getJSONObject("source").getString("table");
+    		        String pkColumn = null;
+    		        
+    		        try {
+						pkColumn = getPrimaryKey(table, con);
+					} catch (InstantiationException | IllegalAccessException | ClassNotFoundException
+							| SQLException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
 					}
+    		        JSONArray fkJsonArray = new JSONArray();
+    		        JSONObject jsonDataAfter = new JSONObject();
+    		        JSONObject jsonDataBefore = new JSONObject();
+    		        
+    		        JSONObject schema = json.getJSONObject("schema");
 		        
-		        } 
-		        
-		        String queryForPost = getQueryForPost(payload.getString("op"), payload.getJSONObject("source").getString("table"), schema, jsonDataAfter, 
-		        		jsonDataBefore, pkColumn, fkJsonArray);
-					   
-		        postJB.put("fk", fkJsonArray);
-		        postJB.put("data", jsonDataAfter);
-		        postJB.put("op", payload.getString("op"));
-		        postJB.put("db", payload.getJSONObject("source").getString("db"));
-		        postJB.put("table", payload.getJSONObject("source").getString("table"));
-		        postJB.put("pk", pkColumn);
-		        postJB.put("query", queryForPost);
-		        postJB.put("previous_data", jsonDataBefore);
-		        postJB.put("worker_id", GROUP_ID);
-		        
-		        postObjects.add(postJB);
-			}
-			
-			consumer.commitAsync();
-		    
-		    HttpConnection.doPost(MASTER_URL+"/ws/rest/v1/bahmnisync/debeziumObjects",postObjects.toString());
-			System.out.println("HERE!!!");
-		    System.out.println(postObjects.toString());
-		    postObjects.clear();
-			
-		} while(records.count() == Integer.parseInt(MAX_POLL_SIZE));
-
-		consumer.close();
+    		        if(!payload.isNull("after"))
+    		        	jsonDataAfter = payload.getJSONObject("after");
+    		        
+    		        if(!payload.isNull("before"))
+    		        	jsonDataBefore = payload.getJSONObject("before");
+    		        
+    		        if(!payload.getString("op").equals("d")){
+    	                
+    		            String query = "SELECT " +
+    		            				"TABLE_NAME,COLUMN_NAME,CONSTRAINT_NAME, REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME " +
+    		            				"FROM " +
+    		            				"INFORMATION_SCHEMA.KEY_COLUMN_USAGE " +
+    		            				"WHERE "+
+    		            				"REFERENCED_TABLE_SCHEMA = '" + db +"' AND " +
+    		            				"TABLE_NAME = '"+table+"';";
+    		            
+    		            Object[][] foreignkeys = getTableData(query,con);
+    		                            	                
+    		            for (Object[] fk : foreignkeys)
+    		            {
+    		            	
+    		              JSONObject fkJSONObject = new JSONObject();
+    		              
+    		              String colName = String.valueOf(fk[1]);
+    		              String referencedTableNme = String.valueOf(fk[3]);
+    		              String referencedColName = String.valueOf(fk[4]);
+    		              
+    		              String dt = getColumnDataType(json.getJSONObject("schema"),colName);
+    		              if(dt.equals(DataType.INT32.label)){
+    		            	  Object fkValue = payload.getJSONObject("after").get(colName);
+    		            	  if(!fkValue.equals(null))	{
+    		            		  
+    		            		  if(colName.equals("patient_id")){
+    		            			  referencedTableNme = "person";
+    		            			  referencedColName = "person_id";
+    		            		  }		            			  
+    		            		  
+    		            		  String fktableReference = "SELECT uuid " + 
+    			  					"from "+ db + "." + referencedTableNme + " " +
+    			  					"where " + referencedColName + " = " + fkValue;
+    		            		   
+    		            	  	String uuid = getValue(fktableReference, con);
+    		            	  	if(uuid != null){
+    			            	  	fkJSONObject.put("COLUMN_NAME", colName);
+    			                    fkJSONObject.put("REFERENCED_TABLE_NAME", referencedTableNme);
+    			                    fkJSONObject.put("REFERENCED_COLUMN_NAME", referencedColName);
+    			            	  	fkJSONObject.put("REFERENCED_UUID", uuid);
+    			            	  	jsonDataAfter.put(colName, uuid);
+    			            	  	if(payload.getString("op").equals("u"))
+    			            	  		jsonDataBefore.put(colName, uuid);
+    			            	  	fkJsonArray.put(fkJSONObject);
+    		            	  	}
+    		            	  }
+    		              }
+    		            
+    		            }
+    		            
+    		            JSONArray fieldsArray = getJSONArrayFromSchema(schema,"after");
+    		            for(int j=0; j<fieldsArray.length(); j++){
+    		        		JSONObject jObj = fieldsArray.getJSONObject(j);
+    		    			String cName = jObj.getString("field");
+    		    			
+    		    			String datatype = getColumnDataType(schema,cName);
+    		    			if(datatype.equals(DataType.INT32.label) && cName.equals(pkColumn)){
+    		    				jsonDataAfter.put(cName, "PK"); 
+    		    				if(payload.getString("op").equals("u"))
+    		    					jsonDataBefore.put(cName, "PK"); 
+    		    			}
+    		    			
+    		    			if(datatype.equals(DataType.INT32.label) && !cName.equals(pkColumn)  && !jsonDataAfter.get(cName).equals(null)){
+    		    				if(jsonDataAfter.get(cName) instanceof java.lang.Integer){
+    		    					String className = getColumnClassName(schema,cName);
+    		    					if(className != null && className.equals("org.apache.kafka.connect.data.Date")){
+        		    					Integer intDate = jsonDataAfter.getInt(cName);
+        		    					long epochMillis = TimeUnit.DAYS.toMillis(intDate);
+        		    					Date date = new Date(epochMillis);
+        		    					DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");  
+        		    		            String strDate = dateFormat.format(date);  
+	        			                jsonDataAfter.put(cName, strDate);
+    		    					}
+    		    				}
+    		    			}
+    		    			if(payload.getString("op").equals("u")){
+    		    				if(datatype.equals(DataType.INT32.label) && !cName.equals(pkColumn)  && !jsonDataBefore.get(cName).equals(null)){
+    		    					if(jsonDataBefore.get(cName) instanceof java.lang.Integer){
+    		    						String className = getColumnClassName(schema,cName);
+        		    					if(className != null && className.equals("org.apache.kafka.connect.data.Date")){
+            		    					Integer intDate = jsonDataBefore.getInt(cName);
+            		    					long epochMillis = TimeUnit.DAYS.toMillis(intDate);
+            		    					Date date = new Date(epochMillis);
+            		    					DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");  
+            		    		            String strDate = dateFormat.format(date);  
+            		    		            jsonDataBefore.put(cName, strDate);
+        		    					}
+        		    				}
+        		    			}
+    		    			}
+    		    			if(datatype.equals(DataType.INT64.label) && !jsonDataAfter.get(cName).equals(null)){
+    		    				String className = getColumnClassName(schema,cName);
+		    					if(className != null && className.equals("org.apache.kafka.connect.data.Timestamp")){
+        			                String strDate = convertTimeWithTimeZome(jsonDataAfter.getLong(cName));
+        			                jsonDataAfter.put(cName, strDate);
+		    					}
+    						 } 
+    		    			
+    		    			if(payload.getString("op").equals("u")){
+        		    			if(datatype.equals(DataType.INT64.label) && !jsonDataBefore.get(cName).equals(null)){
+        		    				String className = getColumnClassName(schema,cName);
+        		    				if(className != null && className.equals("org.apache.kafka.connect.data.Timestamp")){
+	        			                String strDate = convertTimeWithTimeZome(jsonDataBefore.getLong(cName));
+	        			                jsonDataBefore.put(cName, strDate);
+        		    				}
+        						 }
+    		    			}
+    		    			
+    		    			if(datatype.equals(DataType.INT16.label) && !jsonDataAfter.get(cName).equals(null)){
+    		    				if (jsonDataAfter.getInt(cName) == 0)
+    		    					jsonDataAfter.put(cName, "false");
+    						 	else
+    						 		jsonDataAfter.put(cName, "true");
+    						 }
+    		    			
+    		    			if(payload.getString("op").equals("u")){
+        		    			if(datatype.equals(DataType.INT16.label) && !jsonDataBefore.get(cName).equals(null)){
+        		    				if (jsonDataBefore.getInt(cName) == 0)
+        		    					jsonDataBefore.put(cName, "false");
+        						 	else
+        						 		jsonDataBefore.put(cName, "true");
+        						 }
+    		    			}
+    					}
+    		        
+    		        } 
+    		        
+    		        System.out.println("Before...");
+    		        String queryForPost = getQueryForPost(payload.getString("op"), payload.getJSONObject("source").getString("table"), schema, jsonDataAfter, 
+    		        		jsonDataBefore, pkColumn, fkJsonArray);
+    		        System.out.println("after...");
+    					   
+    		        postJB.put("fk", fkJsonArray);
+    		        postJB.put("data", jsonDataAfter);
+    		        postJB.put("op", payload.getString("op"));
+    		        postJB.put("db", payload.getJSONObject("source").getString("db"));
+    		        postJB.put("table", payload.getJSONObject("source").getString("table"));
+    		        postJB.put("pk", pkColumn);
+    		        postJB.put("query", queryForPost);
+    		        postJB.put("previous_data", jsonDataBefore);
+    		        postJB.put("worker_id", GROUP_ID);
+    		        
+    		        postObjects.add(postJB); 
+    		        
+    		        
+                }  
+              
+              if(!postObjects.isEmpty()){
+            	  System.out.println("-------------------------------------"); 
+                  System.out.println("client Data Push"); 
+                  System.out.println(postObjects);
+                  System.out.println("-------------------------------------"); 
+            	  HttpConnection.doPost(MASTER_URL+"/ws/rest/v1/bahmnisync/debeziumObjects",postObjects.toString());
+              }
+              
+       		  postObjects.clear();
+                 
+            }  while (!records.isEmpty());
+            consumer.close();
+		}
+		
 		return flag;
 	}
 	
-	private static Consumer<String, String> createConsumer() {
+	private static Consumer<String, String> createConsumer(String topic) {
 		final Properties props = new Properties();
 		
 		props.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVERS);
 		props.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
 		props.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
-		props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, GROUP_ID);
+		props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "test567");
 		props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 		props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, MAX_POLL_SIZE);
 		
 		// Create the consumer using props.
 		KafkaConsumer<String, String> consumer = new KafkaConsumer<String, String>(props);
 		
+		
+		String[] array = topic.split(",");
 		// Subscribe to the topic
-		String[] array = TOPICS.split(",");
 		consumer.subscribe(Arrays.asList(array));
 				
 		return consumer;
 	}
+	
+	public static String getPrimaryKey(String tableName, Connection con) throws SQLException, InstantiationException, IllegalAccessException, ClassNotFoundException{
+    	ResultSet rs = null;
+    	String pk = null;
+    	DatabaseMetaData meta = con.getMetaData();
+    	rs = meta.getPrimaryKeys(null, null, tableName);
+    	while (rs.next()) {
+    	      pk = rs.getString("COLUMN_NAME");
+    	      break;
+    	    }
+    	return pk;
+    }
 	
 	private static String getColumnDataType(JSONObject schema, String columnName) {
 		
@@ -239,16 +428,86 @@ public class BahmniSyncWorkerService  {
 		return null;
 	}
 	
-	private static Boolean isForeignKey(String colName, JSONArray fkJsonArray) {
+	private static String getColumnClassName(JSONObject schema, String columnName) {
 		
-		for (int i = 0; i < fkJsonArray.length(); i++) {
-			JSONObject jObject = fkJsonArray.getJSONObject(i);
-			if (jObject.getString("COLUMN_NAME").equals(colName))
-				return true;
+		JSONArray fieldsArray = getJSONArrayFromSchema(schema, "after");
+		if (fieldsArray == null)
+			return null;
+		
+		for (int j = 0; j < fieldsArray.length(); j++) {
+			JSONObject jObj = fieldsArray.getJSONObject(j);
+			String colName = jObj.getString("field");
+			if (colName.equals(columnName)) {
+				if(jObj.has("name"))
+					return jObj.getString("name");
+			}
 		}
 		
-		return false;
+		return null;
 	}
+	
+	private static JSONArray getJSONArrayFromSchema(JSONObject schema, String fieldName) {
+		
+		JSONArray jsonArray = schema.getJSONArray("fields");
+		for (int i = 0; i < jsonArray.length(); i++) {
+			JSONObject jObject = jsonArray.getJSONObject(i);
+			String field = jObject.getString("field");
+			if (field.equals(fieldName))
+				return jObject.getJSONArray("fields");
+		}
+		
+		return null;
+		
+	}
+	
+	public static Object[][] getTableData(String command, Connection con) {
+        // 2 Dimensional Object array to hold the table data
+        Object[][] data;
+        // Array list of array lists to record data during transaction
+        ArrayList<ArrayList<Object>> array = new ArrayList<ArrayList<Object>>();
+        try {
+            Statement st = con.createStatement();
+            ResultSet rs = st.executeQuery(command);
+            // Get the number of columns
+            int columns = rs.getMetaData().getColumnCount();
+            while (rs.next()) {
+                // Array list to temporarily hold a record
+                ArrayList<Object> record = new ArrayList<Object>();
+                for (int i = 0; i < columns; i++)
+                    record.add(rs.getObject(i + 1));
+                // Add the record to main Array list
+                array.add(record);
+            }
+            // Copy main Array list to an Object array
+            Object[] list = array.toArray();
+            // Define how many records will be there in table
+            data = new Object[list.length][];
+            for (int i = 0; i < list.length; i++) {
+                // Cast each element in an Array list
+                ArrayList<Object> fieldList = (ArrayList<Object>) list[i];
+                // Copy record into table
+                data[i] = fieldList.toArray();
+            }
+            rs.close();
+        } catch (Exception e) {
+            data = null;
+        } 
+        return data;
+    }
+	
+	public static String getValue(String command, Connection con) {
+        String str = null;
+        try {
+            Statement st = con.createStatement();
+            ResultSet rs = st.executeQuery(command);
+            rs.next();
+            str = rs.getString(1);
+            rs.close();
+        } catch (Exception e) {
+        	 str = null;
+        } 
+        return str;
+    }
 	
 	private static String convertTimeWithTimeZome(long time) {
 		Calendar cal = Calendar.getInstance();
@@ -256,7 +515,7 @@ public class BahmniSyncWorkerService  {
 		cal.setTimeInMillis(time);
 		StringBuilder stringDate = new StringBuilder(cal.get(Calendar.YEAR) + "-");
 		
-		if (cal.get(Calendar.MONTH) < 10)
+		if (cal.get(Calendar.MONTH) < 9)
 			stringDate.append("0" + (cal.get(Calendar.MONTH) + 1) + "-");
 		else
 			stringDate.append((cal.get(Calendar.MONTH) + 1) + "-");
@@ -330,6 +589,16 @@ public class BahmniSyncWorkerService  {
 			JSONObject jObj = fieldsArray.getJSONObject(j);
 			String cName = jObj.getString("field");
 			
+			if(pkColumn.equalsIgnoreCase(cName)){
+				
+				if (isForeignKey(cName, fkJsonArray)) {
+					fieldsString.append(cName + ",");
+					valuesString.append("<" + cName + ">" + ",");
+					continue;
+				}
+				
+			}
+			
 			if ((!pkColumn.equalsIgnoreCase(cName)) && (!data.get(cName).equals(null))) {
 				fieldsString.append(cName + ",");
 				
@@ -340,13 +609,16 @@ public class BahmniSyncWorkerService  {
 				
 				String datatype = getColumnDataType(schema, cName);
 				if (datatype.equals(DataType.INT32.label))
-					valuesString.append(data.getInt(cName) + ",");
+					if (data.get(cName) instanceof Integer)
+						valuesString.append(data.getInt(cName) + "',");
+					else
+						valuesString.append("'" + data.getString(cName) + "',");
 				else if (datatype.equals(DataType.STRING.label))
 					valuesString.append("'" + data.getString(cName) + "',");
 				else if (datatype.equals(DataType.INT64.label)) {
 					String strDate = "";
 					if (data.get(cName) instanceof Long)
-						strDate = convertTimeWithTimeZome(data.getLong(cName));
+						strDate = String.valueOf(data.getLong(cName));
 					else
 						strDate = data.getString(cName);
 					valuesString.append("'" + strDate + "',");
@@ -380,7 +652,7 @@ public class BahmniSyncWorkerService  {
 		for (int j = 0; j < fieldsArray.length(); j++) {
 			JSONObject jObj = fieldsArray.getJSONObject(j);
 			String cName = jObj.getString("field");
-			
+						
 			if ((!pkColumn.equalsIgnoreCase(cName)) && (!data.get(cName).equals(null))) {
 				updateQuery.append(cName + " = ");
 				
@@ -391,7 +663,10 @@ public class BahmniSyncWorkerService  {
 				
 				String datatype = getColumnDataType(schema, cName);
 				if (datatype.equals(DataType.INT32.label))
-					updateQuery.append(data.getInt(cName) + ",");
+					if (data.get(cName) instanceof Integer)
+						updateQuery.append(data.getInt(cName) + "',");
+					else
+						updateQuery.append("'" + data.getString(cName) + "',");
 				else if (datatype.equals(DataType.STRING.label))
 					updateQuery.append("'" + data.getString(cName) + "',");
 				else if (datatype.equals(DataType.INT64.label)) {
@@ -416,139 +691,89 @@ public class BahmniSyncWorkerService  {
 		updateQuery = new StringBuilder(updateQuery.substring(0, updateQuery.length() - 1));
 		String datatype = getColumnDataType(schema, pkColumn);
 		
-		if (datatype.equals(DataType.INT32.label))
-			updateQuery.append(" where uuid = '" + data.getString("uuid") + "';");
-		else if (datatype.equals(DataType.STRING.label))
-			updateQuery.append(" where" + pkColumn + " = '" + data.getString(pkColumn) + "';");
+		if(table.equals("patient")){
+			updateQuery.append(" where patient_id = <person_id>");
+		}
+		else{
+			if (datatype.equals(DataType.INT32.label))
+				updateQuery.append(" where uuid = '" + data.getString("uuid") + "';");
+			else if (datatype.equals(DataType.STRING.label))
+				updateQuery.append(" where" + pkColumn + " = '" + data.getString(pkColumn) + "';");
+		}
 		
 		return updateQuery.toString();
 	}
 	
-	private static JSONArray getJSONArrayFromSchema(JSONObject schema, String fieldName) {
+	private static Boolean isForeignKey(String colName, JSONArray fkJsonArray) {
 		
-		JSONArray jsonArray = schema.getJSONArray("fields");
-		for (int i = 0; i < jsonArray.length(); i++) {
-			JSONObject jObject = jsonArray.getJSONObject(i);
-			String field = jObject.getString("field");
-			if (field.equals(fieldName))
-				return jObject.getJSONArray("fields");
+		for (int i = 0; i < fkJsonArray.length(); i++) {
+			JSONObject jObject = fkJsonArray.getJSONObject(i);
+			if (jObject.getString("COLUMN_NAME").equals(colName))
+				return true;
 		}
 		
-		return null;
+		return false;
+	}
+	
+	public DebeziumObject getDebziumObjectFromJSON(JSONObject map, Connection con){
+		
+		ObjectMapper oMapper = new ObjectMapper();
+		Map<String, Object> mapData = toMap(map.getJSONObject("data"));
+		JSONArray fkArray = map.getJSONArray("fk");
+		ArrayList<Map<String,Object>> fk = new ArrayList<Map<String,Object>>();     
+		if (fkArray != null) { 
+		   for (int i=0;i<fkArray.length();i++){ 
+			  fk.add(toMap(fkArray.getJSONObject(i)));
+		   } 
+		} 
+		String query = replacePrimaryKeyTagsInQuery(fk, String.valueOf(map.get("query")), con);
+
+						
+		DebeziumObject debeziumObject = new DebeziumObject(map.getString("op"),
+														map.getString("db"),
+														map.getString("table"),
+														mapData,fk,
+														map.getString("pk"),
+														query);
+				
+		return debeziumObject;
 		
 	}
 	
-	public String getPrimaryKey(String tableName, Connection con) throws SQLException, InstantiationException, IllegalAccessException, ClassNotFoundException{
-    	ResultSet rs = null;
-    	String pk = null;
-    	DatabaseMetaData meta = con.getMetaData();
-    	rs = meta.getPrimaryKeys(null, null, tableName);
-    	while (rs.next()) {
-    	      pk = rs.getString("COLUMN_NAME");
-    	      break;
-    	    }
-    	return pk;
-    }
-	
-	/**
-     * Get a set of records from database
-     *
-     * @param command
-     * @return 2D array of objects fetched from resultset
-     */
-    @SuppressWarnings("unchecked")
-    public Object[][] getTableData(String command, Connection con) {
-        // 2 Dimensional Object array to hold the table data
-        Object[][] data;
-        // Array list of array lists to record data during transaction
-        ArrayList<ArrayList<Object>> array = new ArrayList<ArrayList<Object>>();
-        try {
-            Statement st = con.createStatement();
-            ResultSet rs = st.executeQuery(command);
-            // Get the number of columns
-            int columns = rs.getMetaData().getColumnCount();
-            while (rs.next()) {
-                // Array list to temporarily hold a record
-                ArrayList<Object> record = new ArrayList<Object>();
-                for (int i = 0; i < columns; i++)
-                    record.add(rs.getObject(i + 1));
-                // Add the record to main Array list
-                array.add(record);
-            }
-            // Copy main Array list to an Object array
-            Object[] list = array.toArray();
-            // Define how many records will be there in table
-            data = new Object[list.length][];
-            for (int i = 0; i < list.length; i++) {
-                // Cast each element in an Array list
-                ArrayList<Object> fieldList = (ArrayList<Object>) list[i];
-                // Copy record into table
-                data[i] = fieldList.toArray();
-            }
-            rs.close();
-        } catch (Exception e) {
-            data = null;
-        } 
-        return data;
-    }
-    
-    /**
-     * Get a single value as string from given select command. The result is
-     * null in case of exception
-     *
-     * @param command
-     * @return First string value returned by command
-     */
-    public String getValue(String command, Connection con) {
-        String str = null;
-        try {
-            Statement st = con.createStatement();
-            ResultSet rs = st.executeQuery(command);
-            rs.next();
-            str = rs.getString(1);
-            rs.close();
-        } catch (Exception e) {
-        	 str = null;
-        } 
-        return str;
-    }
-    
-    @Transactional
-	public void startDataPull() {
-		sessionFactory.getCurrentSession().doWork(new Work() {
-			
-			public void execute(Connection connection) {
-				JSONArray jsonArray = new JSONArray();
-		    	do{
-					try {
-					 String	s = HttpConnection.doGetRequest(MASTER_URL+"/ws/rest/v1/bahmnisync/debeziumObjects/"+GROUP_ID+"/"+MAX_POLL_SIZE);
-			    	jsonArray = new JSONArray(s); 
-			    	
-			    	System.out.println("THERE");
-			    	System.out.println(jsonArray);
-			    		    	
-			    	for(Object obj : jsonArray){
-			    		JSONObject jb = new JSONObject(obj.toString());
-			    		DebeziumObject debeziumObject = getDebziumObjectFromJSON(jb, connection);
-						executeDebeziumObject(debeziumObject,connection);
-					}
-					} catch (IOException | ParseException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-		    	}while(jsonArray.length() == 2);
-		    	
-				
-			}
-		});
+	public static Map<String, Object> toMap(JSONObject jb) {
+	    Map<String, Object> results = new HashMap<String, Object>();
+	    Iterator<String> keys = jb.keys();
+	    
+	    while(keys.hasNext()) {
+	    	Object value = null;
+	        String key = keys.next();
+	        value =  jb.get(key);
+	        results.put(key, value); 
+	    }
+	    return results;
 	}
-    
- public  void executeDebeziumObject(DebeziumObject dbObj, Connection con) throws ParseException{
+	
+	public String replacePrimaryKeyTagsInQuery (ArrayList<Map<String, Object>> fk, String query, Connection con){
+		
+		for(Map<String,Object> keys : fk){
+			
+			String q = "SELECT " + String.valueOf(keys.get("REFERENCED_COLUMN_NAME")) + " from " +
+					String.valueOf(keys.get("REFERENCED_TABLE_NAME")) + " where uuid = '" + 
+					String.valueOf(keys.get("REFERENCED_UUID")) + "';";
+			String qValue = getValue(q,con);
+			
+			query = query.replace("<"+String.valueOf(keys.get("COLUMN_NAME")) +">", qValue);
+			
+		}
+		
+		return query;
+
+	}
+	
+	public  void executeDebeziumObject(DebeziumObject dbObj, Connection con){
 		
 		Object ret = null;
-				
-		System.out.println(dbObj.getQuery());
-		
+						
 		if(dbObj.getOp().equals("u")){
 			
 			String serverData = getServerDataAsString(dbObj,con);
@@ -576,33 +801,8 @@ public class BahmniSyncWorkerService  {
 		}
 		
 	}
-    
-    public DebeziumObject getDebziumObjectFromJSON(JSONObject map, Connection con){
-		
-		ObjectMapper oMapper = new ObjectMapper();
-		Map<String, Object> mapData = toMap(map.getJSONObject("data"));
-		JSONArray fkArray = map.getJSONArray("fk");
-		ArrayList<Map<String,Object>> fk = new ArrayList<Map<String,Object>>();     
-		if (fkArray != null) { 
-		   for (int i=0;i<fkArray.length();i++){ 
-			  fk.add(toMap(fkArray.getJSONObject(i)));
-		   } 
-		} 
-		String query = replacePrimaryKeyTagsInQuery(fk, String.valueOf(map.get("query")), con);
-
-						
-		DebeziumObject debeziumObject = new DebeziumObject(map.getString("op"),
-														map.getString("db"),
-														map.getString("table"),
-														mapData,fk,
-														map.getString("pk"),
-														query);
-				
-		return debeziumObject;
-		
-	}
-    
- public String getServerDataAsString(DebeziumObject dbObject, Connection con){
+	
+	public String getServerDataAsString(DebeziumObject dbObject, Connection con){
 		
 		String columnList = "";
 		for ( String key : dbObject.getData().keySet() ) {
@@ -635,9 +835,18 @@ public class BahmniSyncWorkerService  {
 					}
 					else{
 						
-						if(dataServer[0][i] instanceof java.sql.Timestamp )
-							dataServer[0][i] = String.valueOf(dataServer[0][i]).substring(0, String.valueOf(dataServer[0][i]).length()-2);
-						
+
+						if(dataServer[0][i] instanceof java.sql.Timestamp ){
+							
+						    Timestamp timestamp = (Timestamp)dataServer[0][i];
+						    Calendar cal = Calendar.getInstance();
+						    cal.setTimeInMillis(timestamp.getTime());
+						    cal.add(Calendar.HOUR, -5);
+						    dataServer[0][i] = new Timestamp(cal.getTime().getTime());
+						    
+						    dataServer[0][i] = String.valueOf(dataServer[0][i]).substring(0, String.valueOf(dataServer[0][i]).length()-2);
+							
+						}
 						serverData.append(key + "=" + dataServer[0][i] + ", ");
 					}
 				}
@@ -648,8 +857,8 @@ public class BahmniSyncWorkerService  {
 
 		return finalData ;
 	}
- 
- public static Boolean isForeignKey(String colName, ArrayList<Map<String,Object>> fkJsonArray){
+
+	public static Boolean isForeignKey(String colName, ArrayList<Map<String,Object>> fkJsonArray){
 		
 		for(int i=0; i<fkJsonArray.size(); i++){
 			Map<String,Object> jObject = fkJsonArray.get(i);
@@ -659,39 +868,4 @@ public class BahmniSyncWorkerService  {
 		
 		return false;
 	}
-
-    
- public String replacePrimaryKeyTagsInQuery (ArrayList<Map<String, Object>> fk, String query, Connection con){
-		
-		for(Map<String,Object> keys : fk){
-			
-			String q = "SELECT " + String.valueOf(keys.get("REFERENCED_COLUMN_NAME")) + " from " +
-					String.valueOf(keys.get("REFERENCED_TABLE_NAME")) + " where uuid = '" + 
-					String.valueOf(keys.get("REFERENCED_UUID")) + "';";
-			String qValue = getValue(q,con);
-			
-			query = query.replace("<"+String.valueOf(keys.get("COLUMN_NAME")) +">", qValue);
-			
-		}
-		
-		return query;
-
-	}
-
-    
-    public static Map<String, Object> toMap(JSONObject jb) {
-	    Map<String, Object> results = new HashMap<String, Object>();
-	    Iterator<String> keys = jb.keys();
-	    
-	    while(keys.hasNext()) {
-	    	Object value = null;
-	        String key = keys.next();
-	        value =  jb.get(key);
-	        results.put(key, value); 
-	    }
-	    return results;
-	}
-
-
-	
 }

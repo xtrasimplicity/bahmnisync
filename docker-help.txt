@@ -1,11 +1,21 @@
 ----------------------------------------------------------------------------------------------------------------------------------------------------
 docker run -d --name zookeeper -p 2181:2181 jplock/zookeeper
 
+docker run -d --name zookeeper1 -p 2182:2181 jplock/zookeeper
+
 docker run -d --name kafka -p 9092:9092 -e KAFKA_ADVERTISED_HOST_NAME=192.168.18.11 -e ZOOKEEPER_IP=192.168.18.11 ches/kafka
+
+docker run -d --name kafka -p 9092:9092 -e KAFKA_ADVERTISED_HOST_NAME=192.168.1.101 -e ZOOKEEPER_IP=192.168.1.101 ches/kafka    
+
+docker run -d --name kafka -p 9092:9092 -e KAFKA_ADVERTISED_HOST_NAME=199.172.1.228 -e ZOOKEEPER_IP=199.172.1.228 ches/kafka
+
 
 docker run -d --name mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=debezium -e MYSQL_USER=mysqluser -e MYSQL_PASSWORD=mysqlpw debezium/example-mysql
 
-docker run -it --rm --name connect -p 8083:8083 -e GROUP_ID=1 -e CONFIG_STORAGE_TOPIC=my_connect_configs -e OFFSET_STORAGE_TOPIC=my_connect_offsets -e STATUS_STORAGE_TOPIC=my_connect_statuses --link zookeeper:zookeeper --link kafka:kafka --link mysql:mysql debezium/connect
+docker run -d --name mysql1 -p 3307:3306 -e MYSQL_ROOT_PASSWORD=debezium -e MYSQL_USER=mysqluser -e MYSQL_PASSWORD=mysqlpw debezium/example-mysql
+
+
+docker run -d --name connect -p 8083:8083 -e GROUP_ID=1 -e CONFIG_STORAGE_TOPIC=my_connect_configs -e OFFSET_STORAGE_TOPIC=my_connect_offsets -e STATUS_STORAGE_TOPIC=my_connect_statuses --link zookeeper:zookeeper --link kafka:kafka --link mysql:mysql --link mysql:mysql debezium/connect
 ----------------------------------------------------------------------------------------------------------------------------------------------------
 
 docker run -it --rm --name watcher --link zookeeper:zookeeper --link kafka:kafka debezium/kafka:1.4 watch-topic -a -k dbserver1.openmrs.users

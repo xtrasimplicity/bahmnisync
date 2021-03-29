@@ -15,4 +15,8 @@ public class BahmniSyncMasterConstants {
 	public static final String SYNC_TABLE_GLOBAL_PROPERTY_NAME = MODULE_ID + ".sync.table";
 	
 	public static final String DEBEZIUM_CONNECT_URL_GLOBAL_PROPERTY_NAME = MODULE_ID + ".debezium.connect.url";
+	
+	
+	/* Privileges*/
+	public static final String MANAGE_BAHMNI_SYNC_PRIVILEGE = "Manage Bahmni Sync";
 }

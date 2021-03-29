@@ -1,1 +1,8 @@
-D:\tbr6bng_workspace\bahmnisync-server\src\main\java\com\ihsinformatics\bahmnisync_server\App.java
+D:\bahmnisync\bahmnisync-server\src\main\java\com\ihsinformatics\bahmnisync_server\debezium\consumer\BahmniSyncServerDataSync.java
+D:\bahmnisync\bahmnisync-server\src\main\java\com\ihsinformatics\bahmnisync_server\debezium\DebeziumObject.java
+D:\bahmnisync\bahmnisync-server\src\main\java\com\ihsinformatics\bahmnisync_server\debezium\DebeziumService.java
+D:\bahmnisync\bahmnisync-server\src\main\java\com\ihsinformatics\bahmnisync_server\controller\DebeziumController.java
+D:\bahmnisync\bahmnisync-server\src\main\java\com\ihsinformatics\bahmnisync_server\util\DatabaseUtil.java
+D:\bahmnisync\bahmnisync-server\src\main\java\com\ihsinformatics\bahmnisync_server\BahmniSyncServer.java
+D:\bahmnisync\bahmnisync-server\src\main\java\com\ihsinformatics\bahmnisync_server\util\CommandType.java
+D:\bahmnisync\bahmnisync-server\src\main\java\com\ihsinformatics\bahmnisync_server\util\DataType.java

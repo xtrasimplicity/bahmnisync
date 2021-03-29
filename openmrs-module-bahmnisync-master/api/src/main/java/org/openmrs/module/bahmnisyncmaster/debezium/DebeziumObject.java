@@ -5,8 +5,6 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Map;
 
-import org.json.JSONObject;
-
 public class DebeziumObject {
 
 	private String op;

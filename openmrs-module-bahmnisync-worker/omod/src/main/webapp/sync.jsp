@@ -31,6 +31,7 @@
     }
     function syncProcess() {
     	
+    	$j("#syncButton").prop("disabled", true);
     	$j("#progress").hide();
         $j("#success").hide();
         $j("#failure").hide();
@@ -41,34 +42,46 @@
     }
     function isSyncReady(){
 		addLog('Checking Bahmnisync global properties...');
-    	
+		$j("#progress").show();
+		
     	$j.ajax({
     		"type": "GET",
             "url": "${pageContext.request.contextPath}/module/bahmnisyncworker/syncready.form",
             "data": {},
             "dataType": "json",
-            "success": checkConnection,
+            "success": logSyncReady,
             "error": onError
         });
     }
-    function checkConnection(data){
+    
+    function logSyncReady(data){
     	if (data.ready === "yes") {
     		addLog('Global Properties are available...');
-    		
-    		addLog('Checking Connection to Master...');
-    		$j.ajax({
-                "type": "GET",
-                "url": "${pageContext.request.contextPath}/module/bahmnisyncworker/checkconnection.form",
-                "data": {},
-                "dataType": "json",
-                "success": pushData,
-                "error": onError
-            });
-        } else{
+    		checkConnection(data);
+    	} else{
         	addLog('Some or all Global Properties missing...');
         	addLog('Process stopped!!');
+        	 $j("#progress").hide();
+             $j("#success").hide();
+             $j("#failure").show();
+             $j("#syncButton").prop("disabled", false);
         }
+    }
+    
+    function checkConnection(data){
+    					
+   		addLog('Checking Connection to Master...');
+   		$j.ajax({
+               "type": "GET",
+               "url": "${pageContext.request.contextPath}/module/bahmnisyncworker/checkconnection.form",
+               "data": {},
+               "dataType": "json",
+               "success": pushData,
+               "error": onError
+           });
+      
     } 
+    
 	function pushData(data){
 		if (data.ready === "yes") {
 			addLog('Connection established to Master...');
@@ -85,6 +98,10 @@
 		} else{
 			addLog('Error while pushing data...');
         	addLog('Process stopped!!');
+        	$j("#progress").hide();
+            $j("#success").hide();
+            $j("#failure").show();
+            $j("#syncButton").prop("disabled", false);
 		}
     }
 	function pullData(data){
@@ -97,25 +114,74 @@
                 "url": "${pageContext.request.contextPath}/module/bahmnisyncworker/startPullData.form",
                 "data": {},
                 "dataType": "json",
-                "success": complete,
+                "success": rebuildIndex,
                 "error": onError
             });
 		} else{
 			addLog('Error while pushing data...');
         	addLog('Process stopped!!');
+        	$j("#progress").hide();
+            $j("#success").hide();
+            $j("#failure").show();
+            $j("#syncButton").prop("disabled", false);
 		}
     }
-	function complete(data){
+	
+	function rebuildIndex(data){
 		if (data.ready === "yes") {
 			addLog('Data Pull completed...');
+			addLog('Rebuilding index...!!');
+			$j.ajax({
+	            "type": "POST",
+	            "url": "${pageContext.request.contextPath}/admin/maintenance/rebuildSearchIndex.htm",
+	            "data": {},
+	            "dataType": "json",
+	            "success": complete,
+	            "error": onError
+	        });
+			
+		} else{
+			addLog('Error while pulling data...');
+        	addLog('Process stopped!!');
+        	$j("#progress").hide();
+            $j("#success").hide();
+            $j("#failure").show();
+            $j("#syncButton").prop("disabled", false);
+		}
+	}
+	 
+	 function checkStatus() {
+	        $j.ajax({
+	            "type": "GET",
+	            "url": "${pageContext.request.contextPath}/admin/maintenance/rebuildSearchIndexStatus.htm",
+	            "data": {},
+	            "dataType": "json",
+	            "success": complete,
+	            "error": onError
+	        });
+	    } 
+	
+
+	function complete(data){
+		if (data.status === "success") {
+			addLog('Index Resbuild completed...');
 			addLog('Process completed!!');
 			$j("#success").show();
-		} else{
-			addLog('Error while pushing data...');
+			$j("#progress").hide();
+			$j("#failure").hide();
+			$j("#syncButton").prop("disabled", false);
+			
+		} else if (data.status === "error") {
+			addLog('Error while rebuilding index...');
         	addLog('Process stopped!!');
-        	$j("#failure").show();
-		}
-    }
+        	$j("#progress").hide();
+            $j("#success").hide();
+            $j("#failure").show();
+            $j("#syncButton").prop("disabled", false);
+		} else {
+            setTimeout(checkStatus, 5000);
+        }
+    } 
     function toggleLogs(){
     	var logtext = $j("#loglink").text();
     	 if (logtext === "Show logs") {
@@ -155,37 +221,37 @@
     });
 </script>
 
-<h2><spring:message code="bahmnisyncworker.sync.process"/></h2>
+<h2>Sync Process</h2>
 
 <br/>
 
 <form>
 	<table>
 		<tr class="oddRow">
-			<th style="text-align: left"><openmrs:message code="bahmnisyncworker.last.sync.date.label"/>:</th>
-			<td>${allowUpload}</td>
+			<th style="text-align: left">Last known sync date:</th>
+			<td id="syncDate">${syncDate}</td>
 		</tr>
 		<tr class="evenRow">
-			<th style="text-align: left"><openmrs:message code="bahmnisyncworker.sync.status"/>:</th>
-			<td>${disallowUpload}</td>
+			<th style="text-align: left">Last Sync status:</th>
+			<td d="syncStatus">${syncStatus}</td>
 		</tr>		
 	</table>
 </form>
 
 <br/>
 
-<input id="syncButton" type="submit" value='<openmrs:message code="bahmnisyncworker.start.sync.label"/>' onclick="syncProcess()">
+<input id="syncButton" type="submit" value='Start Sync Process' onclick="syncProcess()">
 <br>
 <div id="progress">
-    <p><openmrs:message code="bahmnisyncworker.inProgress.message"/></p>
+    <p>Inprogress</p>
     <img id="sync_progress_img" src="<openmrs:contextPath/>/images/loading.gif"/>
 </div>
 <br>
 <div id="success">
-    <p><openmrs:message code="bahmnisyncworker.completed.message"/></p>
+    <p>Success</p>
 </div>
 <div class="error" id="failure">
-    <p><openmrs:message code="bahmnisyncworker.failure.message"/></p>
+    <p>Failure</p>
 </div>
 
 <a href="#" onclick="toggleLogs()" id="loglink">Show logs</a>

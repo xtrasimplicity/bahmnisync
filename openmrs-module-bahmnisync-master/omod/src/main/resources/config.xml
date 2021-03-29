@@ -33,26 +33,10 @@
 		<name>Manage Bahmni Sync</name>
 		<description>Allows user to access Bahmni Sync pages/functions</description>
 	</privilege>
-
-	<globalProperty>
-		<property>@MODULE_ID@.worker.node.id</property>
-		<defaultValue></defaultValue>
-		<description>
-			Worker ID, should be be unique among all the nodes synchronizing to master
-		</description>
-	</globalProperty>
-
-	<globalProperty>
-		<property>@MODULE_ID@.master.url</property>
-		<defaultValue></defaultValue>
-		<description>
-			Master url for data sync
-		</description>
-	</globalProperty>
 	
 	<globalProperty>
 		<property>@MODULE_ID@.kafka.url</property>
-		<defaultValue></defaultValue>
+		<defaultValue>localhost:9092</defaultValue>
 		<description>
 			Kafka Server url
 		</description>
@@ -63,14 +47,6 @@
 		<defaultValue></defaultValue>
 		<description>
 			List of table (comma separated), data to be pushed to master 
-		</description>
-	</globalProperty>
-	
-	<globalProperty>
-		<property>@MODULE_ID@.sync.chunk.size</property>
-		<defaultValue>2</defaultValue>
-		<description>
-			Maximum number of changes per request
 		</description>
 	</globalProperty>
 	
