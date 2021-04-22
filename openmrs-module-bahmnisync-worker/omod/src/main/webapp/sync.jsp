@@ -55,11 +55,37 @@
     }
     
     function logSyncReady(data){
-    	if (data.ready === "yes") {
+    	if (data.ready === true) {
     		addLog('Global Properties are available...');
-    		checkConnection(data);
+    		checkKafka(data);
     	} else{
         	addLog('Some or all Global Properties missing...');
+        	addLog('Process stopped!!');
+        	 $j("#progress").hide();
+             $j("#success").hide();
+             $j("#failure").show();
+             $j("#syncButton").prop("disabled", false);
+        }
+    }
+    
+    function checkKafka(data){
+   		addLog('Checking Connection with Kafka...');
+   		$j.ajax({
+               "type": "GET",
+               "url": "${pageContext.request.contextPath}/module/bahmnisyncworker/kafkaconnection.form",
+               "data": {},
+               "dataType": "json",
+               "success": checkKafkaLog,
+               "error": onError
+           });
+      
+    } 
+    
+    function checkKafkaLog(data){
+    	if (data.ready === true) {
+    		checkConnection(data);
+    	} else{
+        	addLog('Unable to connect to Kafka server...');
         	addLog('Process stopped!!');
         	 $j("#progress").hide();
              $j("#success").hide();
@@ -83,7 +109,7 @@
     } 
     
 	function pushData(data){
-		if (data.ready === "yes") {
+		if (data.ready === true) {
 			addLog('Connection established to Master...');
 			
 			addLog('Starting data push to Master...');
@@ -96,7 +122,7 @@
                 "error": onError
             });
 		} else{
-			addLog('Error while pushing data...');
+			addLog('Can not connection to Master node...');
         	addLog('Process stopped!!');
         	$j("#progress").hide();
             $j("#success").hide();
@@ -105,7 +131,7 @@
 		}
     }
 	function pullData(data){
-		if (data.ready === "yes") {
+		if (data.ready === true) {
 			addLog('Data Push completed...');
 			
 			addLog('Starting data pull from Master...');
@@ -128,7 +154,7 @@
     }
 	
 	function rebuildIndex(data){
-		if (data.ready === "yes") {
+		if (data.ready === true) {
 			addLog('Data Pull completed...');
 			addLog('Rebuilding index...!!');
 			$j.ajax({
@@ -218,6 +244,13 @@
         $j("#progress").hide();
         $j("#success").hide();
         $j("#failure").hide();
+        
+        var value = "${syncMessage}";
+        if(value == '')
+        	$j("#message_row").hide();
+        else
+        	$j("#message_row").show();
+        
     });
 </script>
 
@@ -234,7 +267,11 @@
 		<tr class="evenRow">
 			<th style="text-align: left">Last Sync status:</th>
 			<td d="syncStatus">${syncStatus}</td>
-		</tr>		
+		</tr>	
+		<tr class="oddRow" id="message_row">
+			<th style="text-align: left">Error Message:</th>
+			<td d="syncMessage">${syncMessage}</td>
+		</tr>	
 	</table>
 </form>
 
@@ -254,6 +291,7 @@
     <p>Failure</p>
 </div>
 
+</br>
 <a href="#" onclick="toggleLogs()" id="loglink">Show logs</a>
 <br/>
 <textarea id="log" name="log" rows="20" cols="100" style="display:none;" readonly>

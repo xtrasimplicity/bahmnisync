@@ -111,14 +111,7 @@ public class DataPushService  {
 					String.valueOf(keys.get("REFERENCED_TABLE_NAME")) + " where uuid = '" + 
 					String.valueOf(keys.get("REFERENCED_UUID")) + "';";
 			String qValue = getValue(q,con);
-			
-			System.out.println(qValue);
-			System.out.println(String.valueOf(keys.get("REFERENCED_COLUMN_NAME")) );
-			System.out.println(String.valueOf(keys.get("REFERENCED_TABLE_NAME")));
-			System.out.println(String.valueOf(keys.get("REFERENCED_UUID")));
-			System.out.println(String.valueOf(keys.get("COLUMN_NAME")));
-			System.out.println(query);
-			
+				
 			query = query.replace("<"+String.valueOf(keys.get("COLUMN_NAME")) +">", qValue);
 			
 		}
@@ -151,6 +144,11 @@ public class DataPushService  {
 			String serverData = getServerDataAsString(dbObj,con);
 			String clientData = dbObj.getData().toString();
 			String clientPreviousData = dbObj.getOldData().toString();
+			
+			System.out.println("----------------Server Data-------------------");
+			System.out.println(serverData);
+			System.out.println("----------------Client Data-------------------");
+			System.out.println(clientData);
 			
 			if(serverData.equals(clientData))
 				return;
@@ -200,22 +198,22 @@ public class DataPushService  {
 				
 			    if(maxServerDate == null){
 			    	ret = DatabaseUtil.runCommand(CommandType.UPDATE, dbObj.getQuery(),con);
-			    	getLogString(dbObj, "Kept the one form worker due to latest date.", "CONFLICT", con);
+			    	getLogString(dbObj, serverData, "Kept the one form worker due to latest date.", "CONFLICT", con);
 			    }
 			    else if(maxClientDate.after(maxServerDate)){
 			    	ret = DatabaseUtil.runCommand(CommandType.UPDATE, dbObj.getQuery(),con);
-			    	getLogString(dbObj, "Kept the one form worker due to latest date.", "CONFLICT", con);	    
+			    	getLogString(dbObj, serverData, "Kept the one form worker due to latest date.", "CONFLICT", con);	    
 			    }else{
-			    	getLogString(dbObj, "Kept the one form master due to latest date.", "CONFLICT", con);
+			    	getLogString(dbObj, serverData, "Kept the one form master due to latest date.", "CONFLICT", con);
 			    }
 			    
 			}
 			else{
 				ret = DatabaseUtil.runCommand(CommandType.UPDATE, dbObj.getQuery(),con);
 				if(ret instanceof Exception)
-					getLogString(dbObj, ((Exception) ret).getMessage().toString(), "ERROR", con);
+					getLogString(dbObj, null, ((Exception) ret).getMessage().toString(), "ERROR", con);
 				else
-					getLogString(dbObj, "", "SUCCESS", con);
+					getLogString(dbObj, null, "", "SUCCESS", con);
 			}
 			
 		}  else if (dbObj.getOp().equals("c")){
@@ -223,22 +221,27 @@ public class DataPushService  {
 			String serverData = getServerDataAsString(dbObj,con);
 			String clientData = dbObj.getData().toString();
 			
+			System.out.println("----------------Server Data-------------------");
+			System.out.println(serverData);
+			System.out.println("----------------Client Data-------------------");
+			System.out.println(clientData);
+			
 			if(serverData.equals(clientData))
 				return;
 						
 			ret = DatabaseUtil.runCommand(CommandType.CREATE, dbObj.getQuery(),con);
 			if(ret instanceof Exception)
-				getLogString(dbObj, ((Exception) ret).getMessage().toString(), "ERROR", con);
+				getLogString(dbObj, null, ((Exception) ret).getMessage().toString(), "ERROR", con);
 			else
-				getLogString(dbObj, "", "SUCCESS", con);
+				getLogString(dbObj, null, "", "SUCCESS", con);
 			
 		}  else if (dbObj.getOp().equals("d")){
 		
 			ret = DatabaseUtil.runCommand(CommandType.DELETE, dbObj.getQuery(), con);
 			if(ret instanceof Exception)
-				getLogString(dbObj, ((Exception) ret).getMessage().toString(), "ERROR", con);
+				getLogString(dbObj, null, ((Exception) ret).getMessage().toString(), "ERROR", con);
 			else
-				getLogString(dbObj, "", "SUCCESS", con);
+				getLogString(dbObj, null, "", "SUCCESS", con);
 			
 		}
 	}
@@ -279,16 +282,14 @@ public class DataPushService  {
 						
 						if(dataServer[0][i] instanceof java.sql.Timestamp ){
 							
-						    Timestamp timestamp = (Timestamp)dataServer[0][i];
+						    /*Timestamp timestamp = (Timestamp)dataServer[0][i];
 						    
 						    Calendar cal = Calendar.getInstance();
 						    cal.setTimeInMillis(timestamp.getTime());
 						    cal.add(Calendar.HOUR, -5);
-						    cal.add(Calendar.MINUTE, -30);
-						    dataServer[0][i] = new Timestamp(cal.getTime().getTime());				    
-						    
-						    dataServer[0][i] = String.valueOf(dataServer[0][i]).substring(0, String.valueOf(dataServer[0][i]).length()-2);
-							
+						    dataServer[0][i] = new Timestamp(cal.getTime().getTime());*/
+						   	dataServer[0][i] = String.valueOf(dataServer[0][i]).substring(0, String.valueOf(dataServer[0][i]).length()-2);
+			    
 						}
 						serverData.append(key + "=" + dataServer[0][i] + ", ");
 						
@@ -302,7 +303,7 @@ public class DataPushService  {
 		return finalData ;
 	}
 	
-	public void getLogString(DebeziumObject dbObject, String message, String status, Connection con) throws ParseException{
+	public void getLogString(DebeziumObject dbObject, String serverData, String message, String status, Connection con) throws ParseException{
 		
 		BahmniSyncMasterLog log = new BahmniSyncMasterLog();
 		
@@ -310,7 +311,7 @@ public class DataPushService  {
 		log.setWorkerId(dbObject.getWorkerId());
 		log.setWorkerData(dbObject.getData().toString());
 		if(dbObject.getOp().equals("u"))
-			log.setMasterData(getServerDataAsString(dbObject, con));
+			log.setMasterData(serverData);
 		log.setStatus(status);
 		log.setMessage(message);
 		log.setTable(dbObject.getTable());

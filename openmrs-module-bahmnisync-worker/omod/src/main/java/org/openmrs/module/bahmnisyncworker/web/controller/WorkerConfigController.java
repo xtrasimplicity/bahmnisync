@@ -87,9 +87,9 @@ public class WorkerConfigController {
 		props.add(BahmniSyncWorkerConstants.WORKER_NODE_ID_GLOBAL_PROPERTY_NAME);
 		props.add(BahmniSyncWorkerConstants.MASTER_URL_GLOBAL_PROPERTY_NAME);
 		props.add(BahmniSyncWorkerConstants.KAFKA_URL_GLOBAL_PROPERTY_NAME);
-		props.add(BahmniSyncWorkerConstants.SYNC_TABLE_GLOBAL_PROPERTY_NAME);
 		props.add(BahmniSyncWorkerConstants.CHUNK_SIZE_GLOBAL_PROPERTY_NAME);
-		props.add(BahmniSyncWorkerConstants.DEBEZIUM_CONNECT_URL_GLOBAL_PROPERTY_NAME);
+		props.add(BahmniSyncWorkerConstants.DATABASE_SERVER_NAME);
+		props.add(BahmniSyncWorkerConstants.OPENMRS_SCHEME_NAME);
 		
 		//remove the properties we dont want to edit
 		for (GlobalProperty gp : Context.getAdministrationService().getGlobalPropertiesByPrefix(

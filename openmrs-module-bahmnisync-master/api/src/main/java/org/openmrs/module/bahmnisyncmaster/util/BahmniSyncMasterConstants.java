@@ -12,9 +12,9 @@ public class BahmniSyncMasterConstants {
 	
 	public static final String KAFKA_URL_GLOBAL_PROPERTY_NAME = MODULE_ID + ".kafka.url";
 	
-	public static final String SYNC_TABLE_GLOBAL_PROPERTY_NAME = MODULE_ID + ".sync.table";
+	public static final String DATABASE_SERVER_NAME = MODULE_ID + ".database.server.name";
 	
-	public static final String DEBEZIUM_CONNECT_URL_GLOBAL_PROPERTY_NAME = MODULE_ID + ".debezium.connect.url";
+	public static final String OPENMRS_SCHEME_NAME = MODULE_ID + ".openmrs.schema.name";
 	
 	
 	/* Privileges*/

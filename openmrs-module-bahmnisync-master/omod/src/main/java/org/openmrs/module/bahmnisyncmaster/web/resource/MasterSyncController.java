@@ -91,13 +91,5 @@ public class MasterSyncController {
 		return s.toString();
         
     }
-	
-	@RequestMapping(value = "/tablestopull", method = RequestMethod.GET)
-	@ResponseBody
-    public String getTablesToPull(HttpServletRequest request) throws Exception {
-			
-		String topics =  Context.getAdministrationService().getGlobalProperty(BahmniSyncMasterConstants.SYNC_TABLE_GLOBAL_PROPERTY_NAME);      
-		return topics;
-        
-    }
+
 }

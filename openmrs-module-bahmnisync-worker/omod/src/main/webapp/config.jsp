@@ -42,23 +42,23 @@
 			<div class="settingRow">
 				<h4 class="settingName"><%-- <spring:message code="${prop.property}.label" /> --%>
 				
-				<c:if test="${prop.property == 'bahmnisyncworker.debezium.connect.url' }">
-					Debezium Connect's URL
-				</c:if>
 				<c:if test="${prop.property == 'bahmnisyncworker.kafka.url' }">
 					KAFKA URL
 				</c:if>
 				<c:if test="${prop.property == 'bahmnisyncworker.master.url' }">
 					Master node's URL
 				</c:if>
-				<c:if test="${prop.property == 'bahmnisyncworker.sync.table' }">
-					Table Data to Push
-				</c:if>
 				<c:if test="${prop.property == 'bahmnisyncworker.sync.chunk.size' }">
 					Chunk size
 				</c:if>
 				<c:if test="${prop.property == 'bahmnisyncworker.worker.node.id' }">
 					Worker ID
+				</c:if>
+				<c:if test="${prop.property == 'bahmnisyncworker.database.server.name' }">
+					Database Server Name
+				</c:if>
+				<c:if test="${prop.property == 'bahmnisyncworker.openmrs.schema.name' }">
+					OpenMRS Schema Name
 				</c:if>
 				
 				</h4>

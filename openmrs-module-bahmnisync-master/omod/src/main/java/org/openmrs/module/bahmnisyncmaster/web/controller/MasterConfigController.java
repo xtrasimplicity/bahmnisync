@@ -85,8 +85,8 @@ public class MasterConfigController {
 		
 		Set<String> props = new LinkedHashSet<String>();
 		props.add(BahmniSyncMasterConstants.KAFKA_URL_GLOBAL_PROPERTY_NAME);
-		props.add(BahmniSyncMasterConstants.SYNC_TABLE_GLOBAL_PROPERTY_NAME);
-		props.add(BahmniSyncMasterConstants.DEBEZIUM_CONNECT_URL_GLOBAL_PROPERTY_NAME);
+		props.add(BahmniSyncMasterConstants.DATABASE_SERVER_NAME);
+		props.add(BahmniSyncMasterConstants.OPENMRS_SCHEME_NAME);
 		
 		//remove the properties we dont want to edit
 		for (GlobalProperty gp : Context.getAdministrationService().getGlobalPropertiesByPrefix(

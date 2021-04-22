@@ -1,6 +1,12 @@
 package org.openmrs.module.bahmnisyncworker;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.net.HttpURLConnection;
+import java.net.Socket;
+import java.net.URL;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
@@ -11,16 +17,26 @@ import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.TimeZone;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import org.hibernate.Criteria;
@@ -28,6 +44,7 @@ import org.hibernate.criterion.Order;
 import org.hibernate.jdbc.Work;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.openmrs.GlobalProperty;
 import org.openmrs.annotation.Authorized;
 import org.openmrs.api.APIException;
 import org.openmrs.api.context.Context;
@@ -40,6 +57,9 @@ import org.openmrs.module.bahmnisyncworker.util.HttpConnection;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.KafkaAdminClient;
+import org.apache.kafka.clients.admin.ListTopicsResult;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -56,10 +76,16 @@ public class BahmniSyncWorkerService  {
 	public static String MASTER_URL;
 	public static String GROUP_ID;
 	public static String MAX_POLL_SIZE;
+	public static String DATABASE_NAME;
+	public static String SCHEMA_NAME;
+	
+	public static Set<String> topicSet;
+	
+	Boolean pushFlag;
+	Boolean pullFlag;
 	
 	@Autowired
 	DbSessionFactory sessionFactory;
-	
 	
 	public BahmniSyncWorkerLog saveBahmniSyncWorkerLog(BahmniSyncWorkerLog log) throws APIException {
 		sessionFactory.getCurrentSession().saveOrUpdate(log);
@@ -73,48 +99,164 @@ public class BahmniSyncWorkerService  {
 	}
 	
 	@Authorized(BahmniSyncWorkerConstants.MANAGE_BAHMNI_SYNC_PRIVILEGE)
-	@Transactional
-	public void startDataPush() {
-		sessionFactory.getCurrentSession().doWork(new Work() {
+    @Transactional
+	public Boolean checkSyncReadyStatus(){
+		
+		Boolean status = true;
+		try{
 			
-			public void execute(Connection connection) {
-				try {
-					startDataPush(connection);
-					
-					BahmniSyncWorkerLog logs = new BahmniSyncWorkerLog(new Date(),"Data Push Success!");
-					saveBahmniSyncWorkerLog(logs);
-					
-				} catch (SQLException | InstantiationException | IllegalAccessException | ClassNotFoundException | InterruptedException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-					BahmniSyncWorkerLog logs = new BahmniSyncWorkerLog(new Date(),"Failed during Data Push!");
-					saveBahmniSyncWorkerLog(logs);
+			Set<String> props = new LinkedHashSet<String>();
+			props.add(BahmniSyncWorkerConstants.WORKER_NODE_ID_GLOBAL_PROPERTY_NAME);
+			props.add(BahmniSyncWorkerConstants.MASTER_URL_GLOBAL_PROPERTY_NAME);
+			props.add(BahmniSyncWorkerConstants.KAFKA_URL_GLOBAL_PROPERTY_NAME);
+			props.add(BahmniSyncWorkerConstants.DATABASE_SERVER_NAME);
+			props.add(BahmniSyncWorkerConstants.CHUNK_SIZE_GLOBAL_PROPERTY_NAME);
+			props.add(BahmniSyncWorkerConstants.OPENMRS_SCHEME_NAME);
+			
+			//remove the properties we dont want to edit
+			for (GlobalProperty gp : Context.getAdministrationService().getGlobalPropertiesByPrefix(
+			    BahmniSyncWorkerConstants.MODULE_ID)) {
+				if (props.contains(gp.getProperty()) && gp.getPropertyValue() == null){
+					status = false;
 				}
+				
 			}
-		});
+		}catch(Exception e){
+			e.printStackTrace();
+			status = false;			
+		}
+		
+		if(!status){
+			BahmniSyncWorkerLog logs = new BahmniSyncWorkerLog(new Date(),"Some or all required Global properties are missing.", "Failed");
+			saveBahmniSyncWorkerLog(logs);	
+		}
+		
+		return status;
+		
 	}
 	
 	@Authorized(BahmniSyncWorkerConstants.MANAGE_BAHMNI_SYNC_PRIVILEGE)
     @Transactional
-	public void startDataPull() {
+	public Boolean checkKafkaConnection() throws IOException {
+		
+        BOOTSTRAP_SERVERS = Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.KAFKA_URL_GLOBAL_PROPERTY_NAME);
+
+        Boolean status = true;
+        
+		Properties properties = new Properties();
+		properties.put("bootstrap.servers", BOOTSTRAP_SERVERS);
+		properties.put("connections.max.idle.ms", 1000);
+		properties.put("request.timeout.ms", 1000);
+		try (AdminClient client = KafkaAdminClient.create(properties))
+		{
+		    ListTopicsResult topics = client.listTopics();
+		    topicSet = topics.names().get();
+		    if (topicSet.isEmpty())
+		    {	
+		    	status = false;
+		    }
+		}
+		catch (InterruptedException | ExecutionException e)
+		{	
+		    status = false;
+		    e.printStackTrace();
+		}
+		
+		if(!status){
+			BahmniSyncWorkerLog logs = new BahmniSyncWorkerLog(new Date(),"Couldn't connect to Kafka Server.", "Failed");
+			saveBahmniSyncWorkerLog(logs);	
+		}
+		
+		return status;
+		
+	}
+	
+	@Authorized(BahmniSyncWorkerConstants.MANAGE_BAHMNI_SYNC_PRIVILEGE)
+    @Transactional
+	public Boolean checkMasterConnection() throws IOException {
+		
+        Boolean status = false;
+        
+		Set<String> props = new LinkedHashSet<String>();
+				
+		try{
 			
+			String gp = Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.MASTER_URL_GLOBAL_PROPERTY_NAME);
+			
+			URL url = new URL(gp);
+			HttpURLConnection huc = (HttpURLConnection) url.openConnection();
+			int responseCode = huc.getResponseCode();
+			if(responseCode == HttpURLConnection.HTTP_OK){
+				status = true;
+			}
+			else{
+				status = false;
+			}
+		
+		}catch(Exception e){
+			status = false;
+			e.printStackTrace();
+		}
+		 
+		if(!status){
+			BahmniSyncWorkerLog logs = new BahmniSyncWorkerLog(new Date(),"Couldn't connect to Master Server.", "Failed");
+			saveBahmniSyncWorkerLog(logs);	
+		}
+		
+		return status;
+		
+	}
+	
+	@Authorized(BahmniSyncWorkerConstants.MANAGE_BAHMNI_SYNC_PRIVILEGE)
+	@Transactional
+	public Boolean startDataPush() {
+		
+		pushFlag = false;
+		sessionFactory.getCurrentSession().doWork(new Work() {
+			
+			public void execute(Connection connection) {
+				try {
+					pushFlag = startDataPush(connection);
+					
+					BahmniSyncWorkerLog logs = new BahmniSyncWorkerLog(new Date(),"Data Push Success!", "Success");
+					saveBahmniSyncWorkerLog(logs);
+					
+				} catch (Exception e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+					BahmniSyncWorkerLog logs = new BahmniSyncWorkerLog(new Date(),"Failed during Data Push!", "Failed");
+					saveBahmniSyncWorkerLog(logs);
+					pushFlag = false;
+				}
+			}
+		});
+		return pushFlag;
+	}
+	
+	@Authorized(BahmniSyncWorkerConstants.MANAGE_BAHMNI_SYNC_PRIVILEGE)
+    @Transactional
+	public Boolean startDataPull() {
+			
+		pullFlag = true;
 		sessionFactory.getCurrentSession().doWork(new Work() {
 			
 			public void execute(Connection connection) {
 				JSONArray jsonArray = new JSONArray();
 				
 				try {
-					String	tables = HttpConnection.doGetRequest(MASTER_URL+"/ws/rest/v1/bahmnisync/tablestopull");
-
-					System.out.println(tables);
-					String[] array = tables.split(",");
-					System.out.println(array);
-					
+					String[] array = {"person",
+			                "provider,users",
+			                "concept,encounter_type,person_name,person_address,person_attribute,patient",
+							"concept_answer,concept_attribute,concept_attribute_type,concept_class,concept_complex,concept_datatype,concept_description,concept_map_type,concept_name,concept_name_tag,concept_name_tag_map,concept_numeric,concept_proposal,concept_proposal_tag_map,concept_reference_map,concept_reference_source,concept_reference_term,concept_reference_term_map,concept_set,concept_state_conversion,concept_stop_word,patient_identifier,encounter",
+							"encounter_provider,obs"};
+							
 					for(String table : array) {
 					
 					    do{
 	
-							String	s = HttpConnection.doGetRequest(MASTER_URL+"/ws/rest/v1/bahmnisync/debeziumObjects/"+GROUP_ID+"/"+table+"/"+MAX_POLL_SIZE);
+					    	String v = MASTER_URL+"/ws/rest/v1/bahmnisync/debeziumObjects/"+GROUP_ID+"/"+table+"/"+MAX_POLL_SIZE;
+					    	System.out.println(v);
+							String	s = HttpConnection.doGetRequest(v);
 							System.out.println(s);
 							jsonArray = new JSONArray(s); 
 							
@@ -125,20 +267,28 @@ public class BahmniSyncWorkerService  {
 							
 							for(Object obj : jsonArray){
 					    		JSONObject jb = new JSONObject(obj.toString());
+					    		System.out.println(jb);
 					    		DebeziumObject debeziumObject = getDebziumObjectFromJSON(jb, connection);
+					    		System.out.println(debeziumObject.getQuery());
 								executeDebeziumObject(debeziumObject,connection);
 							}
 							
 				    	}while(jsonArray.length() >= Integer.valueOf(MAX_POLL_SIZE));
 					}
 		    	
-				} catch (IOException e) {
+				} catch (Exception e) {
 					// TODO Auto-generated catch block
+					
+					BahmniSyncWorkerLog logs = new BahmniSyncWorkerLog(new Date(),"Data Pull Failed!", "Failed");
+					saveBahmniSyncWorkerLog(logs);	
+					pullFlag = false;
 					e.printStackTrace();
 				}
 		    	
-		    	BahmniSyncWorkerLog logs = new BahmniSyncWorkerLog(new Date(),"Data Pull Success!");
-				saveBahmniSyncWorkerLog(logs);	
+				if(pullFlag){
+			    	BahmniSyncWorkerLog logs = new BahmniSyncWorkerLog(new Date(),"Data Pull Success!", "Success");
+					saveBahmniSyncWorkerLog(logs);
+				}
 				
 				if (sessionFactory.getCurrentSession() != null) {
 					sessionFactory.getCurrentSession().clear(); // internal cache clear
@@ -149,231 +299,245 @@ public class BahmniSyncWorkerService  {
 					sessionFactory.getHibernateSessionFactory().getCache().evictEntityRegions();
 				}
 				
-				return;
 			}
 		});
+		
+		return pullFlag;
 	}
 	
 	public boolean startDataPush(final Connection con) throws InstantiationException, IllegalAccessException, ClassNotFoundException, SQLException, InterruptedException {
 		boolean flag = true;
 		
-        
-        BOOTSTRAP_SERVERS = Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.KAFKA_URL_GLOBAL_PROPERTY_NAME);
-		TOPICS =  Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.SYNC_TABLE_GLOBAL_PROPERTY_NAME);
-		MASTER_URL = Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.MASTER_URL_GLOBAL_PROPERTY_NAME);
-		GROUP_ID = Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.WORKER_NODE_ID_GLOBAL_PROPERTY_NAME);
-		MAX_POLL_SIZE = Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.CHUNK_SIZE_GLOBAL_PROPERTY_NAME);
-		
-		String[] array = {"dbserver1.openmrs.person",
-                "dbserver1.openmrs.users,dbserver1.openmrs.person_name,dbserver1.openmrs.person_address,dbserver1.openmrs.person_attribute,dbserver1.openmrs.patient",
-				"dbserver1.openmrs.patient_identifier,dbserver1.openmrs.encounter",
-				"dbserver1.openmrs.obs"};
-		
-		//String[] array = TOPICS.split(",");
-		
-		for(String topic : array){
+        try{
+        	
+	        BOOTSTRAP_SERVERS = Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.KAFKA_URL_GLOBAL_PROPERTY_NAME);
+			MASTER_URL = Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.MASTER_URL_GLOBAL_PROPERTY_NAME);
+			GROUP_ID = Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.WORKER_NODE_ID_GLOBAL_PROPERTY_NAME);
+			MAX_POLL_SIZE = Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.CHUNK_SIZE_GLOBAL_PROPERTY_NAME);
+			DATABASE_NAME = Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.DATABASE_SERVER_NAME);
+			SCHEMA_NAME = Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.OPENMRS_SCHEME_NAME);
 			
-			ArrayList<JSONObject> postObjects = new ArrayList<JSONObject>();
-    		Consumer<String, String> consumer = createConsumer(topic);
-    		ConsumerRecords<String,String> records = null;
-    		
-    		do{  
-            	
-                //polling
-                records=consumer.poll(Duration.ofMillis(100));  
-                for(ConsumerRecord<String,String> record: records){  
-                	
-                	JSONObject postJB = new JSONObject();
-                	
-                	if(record.value() == null) 
-    		    		continue;
-                	                    	
-                	JSONObject json = new JSONObject(record.value());  
-    		        JSONObject payload = json.getJSONObject("payload");
-    		        String db = payload.getJSONObject("source").getString("db");
-    		        String table = payload.getJSONObject("source").getString("table");
-    		        String pkColumn = null;
-    		        
-    		        try {
-						pkColumn = getPrimaryKey(table, con);
-					} catch (InstantiationException | IllegalAccessException | ClassNotFoundException
-							| SQLException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-    		        JSONArray fkJsonArray = new JSONArray();
-    		        JSONObject jsonDataAfter = new JSONObject();
-    		        JSONObject jsonDataBefore = new JSONObject();
-    		        
-    		        JSONObject schema = json.getJSONObject("schema");
-		        
-    		        if(!payload.isNull("after"))
-    		        	jsonDataAfter = payload.getJSONObject("after");
-    		        
-    		        if(!payload.isNull("before"))
-    		        	jsonDataBefore = payload.getJSONObject("before");
-    		        
-    		        if(!payload.getString("op").equals("d")){
-    	                
-    		            String query = "SELECT " +
-    		            				"TABLE_NAME,COLUMN_NAME,CONSTRAINT_NAME, REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME " +
-    		            				"FROM " +
-    		            				"INFORMATION_SCHEMA.KEY_COLUMN_USAGE " +
-    		            				"WHERE "+
-    		            				"REFERENCED_TABLE_SCHEMA = '" + db +"' AND " +
-    		            				"TABLE_NAME = '"+table+"';";
-    		            
-    		            Object[][] foreignkeys = getTableData(query,con);
-    		                            	                
-    		            for (Object[] fk : foreignkeys)
-    		            {
-    		            	
-    		              JSONObject fkJSONObject = new JSONObject();
-    		              
-    		              String colName = String.valueOf(fk[1]);
-    		              String referencedTableNme = String.valueOf(fk[3]);
-    		              String referencedColName = String.valueOf(fk[4]);
-    		              
-    		              String dt = getColumnDataType(json.getJSONObject("schema"),colName);
-    		              if(dt.equals(DataType.INT32.label)){
-    		            	  Object fkValue = payload.getJSONObject("after").get(colName);
-    		            	  if(!fkValue.equals(null))	{
-    		            		  
-    		            		  if(colName.equals("patient_id")){
-    		            			  referencedTableNme = "person";
-    		            			  referencedColName = "person_id";
-    		            		  }		            			  
-    		            		  
-    		            		  String fktableReference = "SELECT uuid " + 
-    			  					"from "+ db + "." + referencedTableNme + " " +
-    			  					"where " + referencedColName + " = " + fkValue;
-    		            		   
-    		            	  	String uuid = getValue(fktableReference, con);
-    		            	  	if(uuid != null){
-    			            	  	fkJSONObject.put("COLUMN_NAME", colName);
-    			                    fkJSONObject.put("REFERENCED_TABLE_NAME", referencedTableNme);
-    			                    fkJSONObject.put("REFERENCED_COLUMN_NAME", referencedColName);
-    			            	  	fkJSONObject.put("REFERENCED_UUID", uuid);
-    			            	  	jsonDataAfter.put(colName, uuid);
-    			            	  	if(payload.getString("op").equals("u"))
-    			            	  		jsonDataBefore.put(colName, uuid);
-    			            	  	fkJsonArray.put(fkJSONObject);
-    		            	  	}
-    		            	  }
-    		              }
-    		            
-    		            }
-    		            
-    		            JSONArray fieldsArray = getJSONArrayFromSchema(schema,"after");
-    		            for(int j=0; j<fieldsArray.length(); j++){
-    		        		JSONObject jObj = fieldsArray.getJSONObject(j);
-    		    			String cName = jObj.getString("field");
-    		    			
-    		    			String datatype = getColumnDataType(schema,cName);
-    		    			if(datatype.equals(DataType.INT32.label) && cName.equals(pkColumn)){
-    		    				jsonDataAfter.put(cName, "PK"); 
-    		    				if(payload.getString("op").equals("u"))
-    		    					jsonDataBefore.put(cName, "PK"); 
-    		    			}
-    		    			
-    		    			if(datatype.equals(DataType.INT32.label) && !cName.equals(pkColumn)  && !jsonDataAfter.get(cName).equals(null)){
-    		    				if(jsonDataAfter.get(cName) instanceof java.lang.Integer){
-    		    					String className = getColumnClassName(schema,cName);
-    		    					if(className != null && className.equals("org.apache.kafka.connect.data.Date")){
-        		    					Integer intDate = jsonDataAfter.getInt(cName);
-        		    					long epochMillis = TimeUnit.DAYS.toMillis(intDate);
-        		    					Date date = new Date(epochMillis);
-        		    					DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");  
-        		    		            String strDate = dateFormat.format(date);  
-	        			                jsonDataAfter.put(cName, strDate);
-    		    					}
-    		    				}
-    		    			}
-    		    			if(payload.getString("op").equals("u")){
-    		    				if(datatype.equals(DataType.INT32.label) && !cName.equals(pkColumn)  && !jsonDataBefore.get(cName).equals(null)){
-    		    					if(jsonDataBefore.get(cName) instanceof java.lang.Integer){
-    		    						String className = getColumnClassName(schema,cName);
-        		    					if(className != null && className.equals("org.apache.kafka.connect.data.Date")){
-            		    					Integer intDate = jsonDataBefore.getInt(cName);
-            		    					long epochMillis = TimeUnit.DAYS.toMillis(intDate);
-            		    					Date date = new Date(epochMillis);
-            		    					DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");  
-            		    		            String strDate = dateFormat.format(date);  
-            		    		            jsonDataBefore.put(cName, strDate);
-        		    					}
-        		    				}
-        		    			}
-    		    			}
-    		    			if(datatype.equals(DataType.INT64.label) && !jsonDataAfter.get(cName).equals(null)){
-    		    				String className = getColumnClassName(schema,cName);
-		    					if(className != null && className.equals("org.apache.kafka.connect.data.Timestamp")){
-        			                String strDate = convertTimeWithTimeZome(jsonDataAfter.getLong(cName));
-        			                jsonDataAfter.put(cName, strDate);
+			String[] array = {"person",
+	                "provider,users",
+	                "person_name,person_address,person_attribute,patient",
+					"patient_identifier,encounter",
+					"encounter_provider,obs"};
+			
+			for(String topic : array){
+							
+				String topicPrefix = DATABASE_NAME + "." + SCHEMA_NAME + ".";
+				topic = topicPrefix + topic;
+				topic = topic.replace(",", "," + topicPrefix);
+				
+				ArrayList<JSONObject> postObjects = new ArrayList<JSONObject>();
+	    		Consumer<String, String> consumer = createConsumer(topic);
+	    		ConsumerRecords<String,String> records = null;
+	    		
+	    		if(consumer != null){
+		    		do{  
+		            	
+		                //polling
+		                records=consumer.poll(Duration.ofMillis(100));  
+		    			System.out.println(records.count());
+		
+		                for(ConsumerRecord<String,String> record: records){  
+		                	
+		                	JSONObject postJB = new JSONObject();
+		
+		                	if(record.value() == null) 
+		    		    		continue;
+		                	                    	
+		                	JSONObject json = new JSONObject(record.value());  
+		    		        JSONObject payload = json.getJSONObject("payload");
+		    		        String db = payload.getJSONObject("source").getString("db");
+		    		        String table = payload.getJSONObject("source").getString("table");
+		    		        String pkColumn = null;
+		    		        
+		    		        try {
+								pkColumn = getPrimaryKey(table, con);
+							} catch (InstantiationException | IllegalAccessException | ClassNotFoundException
+									| SQLException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}
+		    		        JSONArray fkJsonArray = new JSONArray();
+		    		        JSONObject jsonDataAfter = new JSONObject();
+		    		        JSONObject jsonDataBefore = new JSONObject();
+		    		        
+		    		        JSONObject schema = json.getJSONObject("schema");
+				        
+		    		        if(!payload.isNull("after"))
+		    		        	jsonDataAfter = payload.getJSONObject("after");
+		    		        
+		    		        if(!payload.isNull("before"))
+		    		        	jsonDataBefore = payload.getJSONObject("before");
+		    		        
+		    		        if(!payload.getString("op").equals("d")){
+		    	                
+		    		            String query = "SELECT " +
+		    		            				"TABLE_NAME,COLUMN_NAME,CONSTRAINT_NAME, REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME " +
+		    		            				"FROM " +
+		    		            				"INFORMATION_SCHEMA.KEY_COLUMN_USAGE " +
+		    		            				"WHERE "+
+		    		            				"REFERENCED_TABLE_SCHEMA = '" + db +"' AND " +
+		    		            				"TABLE_NAME = '"+table+"';";
+		    		            
+		    		            Object[][] foreignkeys = getTableData(query,con);
+		    		                            	                
+		    		            for (Object[] fk : foreignkeys)
+		    		            {
+		    		            	
+		    		              JSONObject fkJSONObject = new JSONObject();
+		    		              
+		    		              String colName = String.valueOf(fk[1]);
+		    		              String referencedTableNme = String.valueOf(fk[3]);
+		    		              String referencedColName = String.valueOf(fk[4]);
+		    		              
+		    		              String dt = getColumnDataType(json.getJSONObject("schema"),colName);
+		    		              if(dt.equals(DataType.INT32.label)){
+		    		            	  Object fkValue = payload.getJSONObject("after").get(colName);
+		    		            	  if(!fkValue.equals(null))	{
+		    		            		  
+		    		            		  if(colName.equals("patient_id")){
+		    		            			  referencedTableNme = "person";
+		    		            			  referencedColName = "person_id";
+		    		            		  }		            			  
+		    		            		  
+		    		            		  String fktableReference = "SELECT uuid " + 
+		    			  					"from "+ db + "." + referencedTableNme + " " +
+		    			  					"where " + referencedColName + " = " + fkValue;
+		    		            		   
+		    		            	  	String uuid = getValue(fktableReference, con);
+		    		            	  	if(uuid != null){
+		    			            	  	fkJSONObject.put("COLUMN_NAME", colName);
+		    			                    fkJSONObject.put("REFERENCED_TABLE_NAME", referencedTableNme);
+		    			                    fkJSONObject.put("REFERENCED_COLUMN_NAME", referencedColName);
+		    			            	  	fkJSONObject.put("REFERENCED_UUID", uuid);
+		    			            	  	jsonDataAfter.put(colName, uuid);
+		    			            	  	if(payload.getString("op").equals("u"))
+		    			            	  		jsonDataBefore.put(colName, uuid);
+		    			            	  	fkJsonArray.put(fkJSONObject);
+		    		            	  	}
+		    		            	  }
+		    		              }
+		    		            
+		    		            }
+		    		            
+		    		            JSONArray fieldsArray = getJSONArrayFromSchema(schema,"after");
+		    		            for(int j=0; j<fieldsArray.length(); j++){
+		    		        		JSONObject jObj = fieldsArray.getJSONObject(j);
+		    		    			String cName = jObj.getString("field");
+		    		    			
+		    		    			String datatype = getColumnDataType(schema,cName);
+		    		    			if(datatype.equals(DataType.INT32.label) && cName.equals(pkColumn)){
+		    		    				jsonDataAfter.put(cName, "PK"); 
+		    		    				if(payload.getString("op").equals("u"))
+		    		    					jsonDataBefore.put(cName, "PK"); 
+		    		    			}
+		    		    			
+		    		    			if(datatype.equals(DataType.INT32.label) && !cName.equals(pkColumn)  && !jsonDataAfter.get(cName).equals(null)){
+		    		    				if(jsonDataAfter.get(cName) instanceof java.lang.Integer){
+		    		    					String className = getColumnClassName(schema,cName);
+		    		    					if(className != null && className.equals("org.apache.kafka.connect.data.Date")){
+		        		    					Integer intDate = jsonDataAfter.getInt(cName);
+		        		    					long epochMillis = TimeUnit.DAYS.toMillis(intDate);
+		        		    					Date date = new Date(epochMillis);
+		        		    					DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");  
+		        		    		            String strDate = dateFormat.format(date);  
+			        			                jsonDataAfter.put(cName, strDate);
+		    		    					}
+		    		    				}
+		    		    			}
+		    		    			if(payload.getString("op").equals("u")){
+		    		    				if(datatype.equals(DataType.INT32.label) && !cName.equals(pkColumn)  && !jsonDataBefore.get(cName).equals(null)){
+		    		    					if(jsonDataBefore.get(cName) instanceof java.lang.Integer){
+		    		    						String className = getColumnClassName(schema,cName);
+		        		    					if(className != null && className.equals("org.apache.kafka.connect.data.Date")){
+		            		    					Integer intDate = jsonDataBefore.getInt(cName);
+		            		    					long epochMillis = TimeUnit.DAYS.toMillis(intDate);
+		            		    					Date date = new Date(epochMillis);
+		            		    					DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");  
+		            		    		            String strDate = dateFormat.format(date);  
+		            		    		            jsonDataBefore.put(cName, strDate);
+		        		    					}
+		        		    				}
+		        		    			}
+		    		    			}
+		    		    			if(datatype.equals(DataType.INT64.label) && !jsonDataAfter.get(cName).equals(null)){
+		    		    				String className = getColumnClassName(schema,cName);
+				    					if(className != null && className.equals("org.apache.kafka.connect.data.Timestamp")){
+		        			                String strDate = convertTimeWithTimeZome(jsonDataAfter.getLong(cName));
+		        			                jsonDataAfter.put(cName, strDate);
+				    					}
+		    						 } 
+		    		    			
+		    		    			if(payload.getString("op").equals("u")){
+		        		    			if(datatype.equals(DataType.INT64.label) && !jsonDataBefore.get(cName).equals(null)){
+		        		    				String className = getColumnClassName(schema,cName);
+		        		    				if(className != null && className.equals("org.apache.kafka.connect.data.Timestamp")){
+			        			                String strDate = convertTimeWithTimeZome(jsonDataBefore.getLong(cName));
+			        			                jsonDataBefore.put(cName, strDate);
+		        		    				}
+		        						 }
+		    		    			}
+		    		    			
+		    		    			if(datatype.equals(DataType.INT16.label) && !jsonDataAfter.get(cName).equals(null)){
+		    		    				if (jsonDataAfter.getInt(cName) == 0)
+		    		    					jsonDataAfter.put(cName, "false");
+		    						 	else
+		    						 		jsonDataAfter.put(cName, "true");
+		    						 }
+		    		    			
+		    		    			if(payload.getString("op").equals("u")){
+		        		    			if(datatype.equals(DataType.INT16.label) && !jsonDataBefore.get(cName).equals(null)){
+		        		    				if (jsonDataBefore.getInt(cName) == 0)
+		        		    					jsonDataBefore.put(cName, "false");
+		        						 	else
+		        						 		jsonDataBefore.put(cName, "true");
+		        						 }
+		    		    			}
 		    					}
-    						 } 
-    		    			
-    		    			if(payload.getString("op").equals("u")){
-        		    			if(datatype.equals(DataType.INT64.label) && !jsonDataBefore.get(cName).equals(null)){
-        		    				String className = getColumnClassName(schema,cName);
-        		    				if(className != null && className.equals("org.apache.kafka.connect.data.Timestamp")){
-	        			                String strDate = convertTimeWithTimeZome(jsonDataBefore.getLong(cName));
-	        			                jsonDataBefore.put(cName, strDate);
-        		    				}
-        						 }
-    		    			}
-    		    			
-    		    			if(datatype.equals(DataType.INT16.label) && !jsonDataAfter.get(cName).equals(null)){
-    		    				if (jsonDataAfter.getInt(cName) == 0)
-    		    					jsonDataAfter.put(cName, "false");
-    						 	else
-    						 		jsonDataAfter.put(cName, "true");
-    						 }
-    		    			
-    		    			if(payload.getString("op").equals("u")){
-        		    			if(datatype.equals(DataType.INT16.label) && !jsonDataBefore.get(cName).equals(null)){
-        		    				if (jsonDataBefore.getInt(cName) == 0)
-        		    					jsonDataBefore.put(cName, "false");
-        						 	else
-        						 		jsonDataBefore.put(cName, "true");
-        						 }
-    		    			}
-    					}
-    		        
-    		        } 
-    		        
-    		        System.out.println("Before...");
-    		        String queryForPost = getQueryForPost(payload.getString("op"), payload.getJSONObject("source").getString("table"), schema, jsonDataAfter, 
-    		        		jsonDataBefore, pkColumn, fkJsonArray);
-    		        System.out.println("after...");
-    					   
-    		        postJB.put("fk", fkJsonArray);
-    		        postJB.put("data", jsonDataAfter);
-    		        postJB.put("op", payload.getString("op"));
-    		        postJB.put("db", payload.getJSONObject("source").getString("db"));
-    		        postJB.put("table", payload.getJSONObject("source").getString("table"));
-    		        postJB.put("pk", pkColumn);
-    		        postJB.put("query", queryForPost);
-    		        postJB.put("previous_data", jsonDataBefore);
-    		        postJB.put("worker_id", GROUP_ID);
-    		        
-    		        postObjects.add(postJB); 
-    		        
-    		        
-                }  
-              
-              if(!postObjects.isEmpty()){
-            	  System.out.println("-------------------------------------"); 
-                  System.out.println("client Data Push"); 
-                  System.out.println(postObjects);
-                  System.out.println("-------------------------------------"); 
-            	  HttpConnection.doPost(MASTER_URL+"/ws/rest/v1/bahmnisync/debeziumObjects",postObjects.toString());
-              }
-              
-       		  postObjects.clear();
-                 
-            }  while (!records.isEmpty());
-            consumer.close();
-		}
+		    		        
+		    		        } 
+		    		        
+		    		        String queryForPost = getQueryForPost(payload.getString("op"), payload.getJSONObject("source").getString("table"), schema, jsonDataAfter, 
+		    		        		jsonDataBefore, pkColumn, fkJsonArray);
+		    					   
+		    		        postJB.put("fk", fkJsonArray);
+		    		        postJB.put("data", jsonDataAfter);
+		    		        postJB.put("op", payload.getString("op"));
+		    		        postJB.put("db", payload.getJSONObject("source").getString("db"));
+		    		        postJB.put("table", payload.getJSONObject("source").getString("table"));
+		    		        postJB.put("pk", pkColumn);
+		    		        postJB.put("query", queryForPost);
+		    		        postJB.put("previous_data", jsonDataBefore);
+		    		        postJB.put("worker_id", GROUP_ID);
+		    		        
+		    		        postObjects.add(postJB); 
+		    		        
+		    		        
+		                }  
+		              
+		              if(!postObjects.isEmpty()){
+		            	  System.out.println("-------------------------------------"); 
+		                  System.out.println("client Data Push"); 
+		                  System.out.println(postObjects);
+		                  System.out.println("-------------------------------------"); 
+		            	  //HttpConnection.doPost(MASTER_URL+"/ws/rest/v1/bahmnisync/debeziumObjects",postObjects.toString());
+		              }
+		              
+		       		  postObjects.clear();
+		                 
+		            }  while (!records.isEmpty());
+		            consumer.close();
+	    		}
+			}
+        }catch(Exception e){
+        	
+        	flag = false;
+			e.printStackTrace();
+			
+        }
 		
 		return flag;
 	}
@@ -381,10 +545,12 @@ public class BahmniSyncWorkerService  {
 	private static Consumer<String, String> createConsumer(String topic) {
 		final Properties props = new Properties();
 		
+		GROUP_ID = Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.WORKER_NODE_ID_GLOBAL_PROPERTY_NAME);
+
 		props.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVERS);
 		props.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
 		props.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
-		props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "test567");
+		props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, GROUP_ID + "worker-side-001");
 		props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 		props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, MAX_POLL_SIZE);
 		
@@ -393,8 +559,18 @@ public class BahmniSyncWorkerService  {
 		
 		
 		String[] array = topic.split(",");
+		List<String> arrayList = new ArrayList<String>();
+		
+		for(String arr: array){
+			if(topicSet.contains(arr))
+				arrayList.add(arr);
+		}
+		
 		// Subscribe to the topic
-		consumer.subscribe(Arrays.asList(array));
+		if(!arrayList.isEmpty())
+			consumer.subscribe(arrayList);
+		else
+			consumer = null;
 				
 		return consumer;
 	}
@@ -510,34 +686,14 @@ public class BahmniSyncWorkerService  {
     }
 	
 	private static String convertTimeWithTimeZome(long time) {
-		Calendar cal = Calendar.getInstance();
-		cal.setTimeZone(TimeZone.getTimeZone("UTC"));
-		cal.setTimeInMillis(time);
-		StringBuilder stringDate = new StringBuilder(cal.get(Calendar.YEAR) + "-");
 		
-		if (cal.get(Calendar.MONTH) < 9)
-			stringDate.append("0" + (cal.get(Calendar.MONTH) + 1) + "-");
-		else
-			stringDate.append((cal.get(Calendar.MONTH) + 1) + "-");
-		if (cal.get(Calendar.DAY_OF_MONTH) < 10)
-			stringDate.append("0" + cal.get(Calendar.DAY_OF_MONTH) + " ");
-		else
-			stringDate.append(cal.get(Calendar.DAY_OF_MONTH) + " ");
-		if (cal.get(Calendar.HOUR_OF_DAY) < 10)
-			stringDate.append("0" + cal.get(Calendar.HOUR_OF_DAY) + ":");
-		else
-			stringDate.append(cal.get(Calendar.HOUR_OF_DAY) + ":");
-		if (cal.get(Calendar.MINUTE) < 10)
-			stringDate.append("0" + cal.get(Calendar.MINUTE) + ":");
-		else
-			stringDate.append(cal.get(Calendar.MINUTE) + ":");
-		if (cal.get(Calendar.SECOND) < 10)
-			stringDate.append("0" + cal.get(Calendar.SECOND));
-		else
-			stringDate.append(cal.get(Calendar.SECOND));
+		SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 		
-		return stringDate.toString();
+		Instant instant = Instant.ofEpochMilli(time);
+        Date dateObject = Date.from(instant);
+        format.setTimeZone(TimeZone.getTimeZone("UTC"));
 		
+		return format.format(dateObject);		
 	}
 	
 	private static String getQueryForPost(String op, String table, JSONObject schema, JSONObject data,
@@ -608,11 +764,20 @@ public class BahmniSyncWorkerService  {
 				}
 				
 				String datatype = getColumnDataType(schema, cName);
-				if (datatype.equals(DataType.INT32.label))
-					if (data.get(cName) instanceof Integer)
-						valuesString.append(data.getInt(cName) + "',");
+				if (datatype.equals(DataType.INT32.label)){
+					if (data.get(cName) instanceof Integer){
+						
+						if(cName.equals("location_id") && data.getInt(cName) == 0)
+							valuesString.append("NULL,");
+						else
+							valuesString.append(data.getInt(cName) + ",");
+						
+					}
 					else
 						valuesString.append("'" + data.getString(cName) + "',");
+				}
+				else if (datatype.equals(DataType.DOUBLE.label))
+					valuesString.append(data.get(cName) + ",");
 				else if (datatype.equals(DataType.STRING.label))
 					valuesString.append("'" + data.getString(cName) + "',");
 				else if (datatype.equals(DataType.INT64.label)) {
@@ -662,11 +827,21 @@ public class BahmniSyncWorkerService  {
 				}
 				
 				String datatype = getColumnDataType(schema, cName);
-				if (datatype.equals(DataType.INT32.label))
-					if (data.get(cName) instanceof Integer)
-						updateQuery.append(data.getInt(cName) + "',");
+				if (datatype.equals(DataType.INT32.label)){
+					if (data.get(cName) instanceof Integer){
+												
+						if(cName.equals("location_id") && data.getInt(cName) == 0)
+							updateQuery.append("NULL,");
+						else
+							updateQuery.append(data.getInt(cName) + ",");
+						
+					}
 					else
 						updateQuery.append("'" + data.getString(cName) + "',");
+				}
+				else if (datatype.equals(DataType.DOUBLE.label)){
+					updateQuery.append(data.get(cName) + ",");
+				}
 				else if (datatype.equals(DataType.STRING.label))
 					updateQuery.append("'" + data.getString(cName) + "',");
 				else if (datatype.equals(DataType.INT64.label)) {
@@ -779,6 +954,11 @@ public class BahmniSyncWorkerService  {
 			String serverData = getServerDataAsString(dbObj,con);
 			String clientData = dbObj.getData().toString();
 			
+			System.out.println("----------------Server Data-------------------");
+			System.out.println(serverData);
+			System.out.println("----------------Client Data-------------------");
+			System.out.println(clientData);
+			
 			if(serverData.equals(clientData))
 				return;
 			
@@ -788,6 +968,11 @@ public class BahmniSyncWorkerService  {
 			
 			String serverData = getServerDataAsString(dbObj,con);
 			String clientData = dbObj.getData().toString();
+			
+			System.out.println("----------------Server Data-------------------");
+			System.out.println(serverData);
+			System.out.println("----------------Client Data-------------------");
+			System.out.println(clientData);
 			
 			if(serverData.equals(clientData))
 				return;
@@ -820,37 +1005,39 @@ public class BahmniSyncWorkerService  {
 		if(dataServer != null && dataServer.length != 0){
 		for(String key : dbObject.getData().keySet() ){
 			
-				if(key.equals(dbObject.getPk()) && dataServer[0][i] instanceof Integer){
-					serverData.append(key + "=PK, ");
-				}else {
+			if(key.equals(dbObject.getPk()) && dataServer[0][i] instanceof Integer){
+				serverData.append(key + "=PK, ");
+			}else {
+				
+				if(isForeignKey(key,fkJsonArray)){
 					
-					if(isForeignKey(key,fkJsonArray)){
-						
-						for(int j=0; j<fkJsonArray.size(); j++){
-							Map<String,Object> jObject = fkJsonArray.get(j);
-							if(jObject.get("COLUMN_NAME").equals(key))
-								serverData.append(key + "=" + jObject.get("REFERENCED_UUID") + ", ");
-						}
-						
+					for(int j=0; j<fkJsonArray.size(); j++){
+						Map<String,Object> jObject = fkJsonArray.get(j);
+						if(jObject.get("COLUMN_NAME").equals(key))
+							serverData.append(key + "=" + jObject.get("REFERENCED_UUID") + ", ");
 					}
-					else{
-						
-
-						if(dataServer[0][i] instanceof java.sql.Timestamp ){
-							
-						    Timestamp timestamp = (Timestamp)dataServer[0][i];
-						    Calendar cal = Calendar.getInstance();
-						    cal.setTimeInMillis(timestamp.getTime());
-						    cal.add(Calendar.HOUR, -5);
-						    dataServer[0][i] = new Timestamp(cal.getTime().getTime());
-						    
-						    dataServer[0][i] = String.valueOf(dataServer[0][i]).substring(0, String.valueOf(dataServer[0][i]).length()-2);
-							
-						}
-						serverData.append(key + "=" + dataServer[0][i] + ", ");
-					}
+					
 				}
-				i++;
+				else{
+					
+					
+					if(dataServer[0][i] instanceof java.sql.Timestamp ){
+						
+					    /*Timestamp timestamp = (Timestamp)dataServer[0][i];
+					    
+					    Calendar cal = Calendar.getInstance();
+					    cal.setTimeInMillis(timestamp.getTime());
+					    cal.add(Calendar.HOUR, -5);
+					    dataServer[0][i] = new Timestamp(cal.getTime().getTime());	*/		    
+					    
+					    dataServer[0][i] = String.valueOf(dataServer[0][i]).substring(0, String.valueOf(dataServer[0][i]).length()-2);
+						
+					}
+					serverData.append(key + "=" + dataServer[0][i] + ", ");
+					
+				}
+			}
+			i++;
 		}		
 		finalData = serverData.substring(0, serverData.length()-2) + "}";
 		}
@@ -868,4 +1055,5 @@ public class BahmniSyncWorkerService  {
 		
 		return false;
 	}
+
 }

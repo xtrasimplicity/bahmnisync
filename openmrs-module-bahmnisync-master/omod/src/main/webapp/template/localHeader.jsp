@@ -25,7 +25,7 @@
 	<li
 			<c:if test='<%= request.getRequestURI().contains("/conflict") %>'>class="active"</c:if>>
 		<a
-				href="${pageContext.request.contextPath}/module/bahmnisyncmaster/conflict.form">Conflicts</a>
+				href="${pageContext.request.contextPath}/module/bahmnisyncmaster/conflict2.form">Conflicts</a>
 	</li>
 
 	<li

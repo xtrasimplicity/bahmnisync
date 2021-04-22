@@ -41,15 +41,17 @@
 		<spring:nestedPath path="properties[${varStatus.index}]">
 			<div class="settingRow">
 				<h4 class="settingName"><%-- <spring:message code="${prop.property}.label" /> --%>
-				<c:if test="${prop.property == 'bahmnisyncmaster.debezium.connect.url' }">
-					Debezium Connect's URL
-				</c:if>
+
 				<c:if test="${prop.property == 'bahmnisyncmaster.kafka.url' }">
 					KAFKA URL
 				</c:if>
-				<c:if test="${prop.property == 'bahmnisyncmaster.sync.table' }">
-					Table Data to Push
+				<c:if test="${prop.property == 'bahmnisyncmaster.database.server.name' }">
+					Database Server Name
 				</c:if>
+				<c:if test="${prop.property == 'bahmnisyncmaster.openmrs.schema.name' }">
+					OpenMRS Schema Name
+				</c:if>
+				
 				</h4>
 				<span class="settingValue">
 					<spring:bind path="propertyValue">

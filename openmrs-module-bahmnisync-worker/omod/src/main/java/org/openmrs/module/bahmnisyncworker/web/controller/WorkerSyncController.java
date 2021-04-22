@@ -89,28 +89,30 @@ public class WorkerSyncController {
 			BahmniSyncWorkerLog log = logs.get(0);
 			
 			modelMap.addAttribute("syncDate", log.getLogDateTime());
+			modelMap.addAttribute("syncStatus", log.getStatus());
 			
-			if(log.getMessage().contains("Failed"))
-				modelMap.addAttribute("syncStatus", "Failed");
-			else
-				modelMap.addAttribute("syncStatus", "Success");
-			
+			if(!log.getStatus().contains("Success"))
+				modelMap.addAttribute("syncMessage", log.getMessage());
+		    else 
+				modelMap.addAttribute("syncMessage", "");
+
 		}
 		return SUCCESS_FORM_VIEW;
 	}
 	
 	@RequestMapping(method = RequestMethod.GET, value = "/module/bahmnisyncworker/startPushData.form")
 	public @ResponseBody
-	Map<String, String> startDataPush() {
+	Map<String, Boolean> startDataPush() {
 		
-		Map<String, String> results = new HashMap<>();		
+		Map<String, Boolean> results = new HashMap<>();
+		Boolean ready = true;	
 		try{
 
-			syncWorkerService.startDataPush();
-			results.put("ready", "yes");
+			ready = syncWorkerService.startDataPush();
+			results.put("ready",ready);
 					
 		}catch(Exception e){
-			results.put("ready", "no");
+			results.put("ready", false);
 			log.error(e);
 		}
 		
@@ -133,86 +135,57 @@ public class WorkerSyncController {
         return results;
     }
 	
-	@RequestMapping(method = RequestMethod.GET, value = "/module/bahmnisyncworker/syncready.form")
-    public @ResponseBody Map<String, String> isSyncReady() {
+	@RequestMapping(method = RequestMethod.GET, value = "/module/bahmnisyncworker/kafkaconnection.form")
+    public @ResponseBody Map<String, Boolean> checkKafkaConnection() {
 		
-		Map<String, String> results = new HashMap<>();
-				
-		String ready = "yes";
-		try{
+		Map<String, Boolean> results = new HashMap<>();
+		Boolean ready = false;
+		try {
+			ready = syncWorkerService.checkKafkaConnection();
+		} catch (IOException e1) {
 			
-			Set<String> props = new LinkedHashSet<String>();
-			props.add(BahmniSyncWorkerConstants.WORKER_NODE_ID_GLOBAL_PROPERTY_NAME);
-			props.add(BahmniSyncWorkerConstants.MASTER_URL_GLOBAL_PROPERTY_NAME);
-			props.add(BahmniSyncWorkerConstants.KAFKA_URL_GLOBAL_PROPERTY_NAME);
-			props.add(BahmniSyncWorkerConstants.SYNC_TABLE_GLOBAL_PROPERTY_NAME);
-			props.add(BahmniSyncWorkerConstants.CHUNK_SIZE_GLOBAL_PROPERTY_NAME);
-			props.add(BahmniSyncWorkerConstants.DEBEZIUM_CONNECT_URL_GLOBAL_PROPERTY_NAME);
-			
-			//remove the properties we dont want to edit
-			for (GlobalProperty gp : Context.getAdministrationService().getGlobalPropertiesByPrefix(
-			    BahmniSyncWorkerConstants.MODULE_ID)) {
-				if (props.contains(gp.getProperty()) && gp.getPropertyValue() == null){
-					ready = "no";
-				}
-				
-			}
-		}catch(Exception e){
-			ready = "no";
-			log.error(e);			
+			log.error(e1);
+			ready = false;
 		}
+		
+		results.put("ready", ready);
+        return results;
+	}
+	
+	@RequestMapping(method = RequestMethod.GET, value = "/module/bahmnisyncworker/syncready.form")
+    public @ResponseBody Map<String, Boolean> isSyncReady() {
 
-        results.put("ready", ready);
+		Map<String, Boolean> results = new HashMap<>();		
+		Boolean status = syncWorkerService.checkSyncReadyStatus();
+        results.put("ready", status);
         return results;
     }
 	
 	@RequestMapping(method = RequestMethod.GET, value = "/module/bahmnisyncworker/checkconnection.form")
-    public @ResponseBody Map<String, String> checkConnection() throws IOException {
+    public @ResponseBody Map<String, Boolean> checkConnection() throws IOException {
 		
-		String ready = "";
-		Set<String> props = new LinkedHashSet<String>();
-				
-		try{
-			
-			String gp = Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.MASTER_URL_GLOBAL_PROPERTY_NAME);
-			
-			URL url = new URL(gp);
-			HttpURLConnection huc = (HttpURLConnection) url.openConnection();
-			int responseCode = huc.getResponseCode();
-			if(responseCode == HttpURLConnection.HTTP_OK){
-				ready = "yes";
-			}
-			else{
-				ready = "no";
-			}
-		
-		}catch(Exception e){
-			ready = "no";
-			log.error(e);
-		}
-		 
-        Map<String, String> results = new HashMap<>();
-        results.put("ready", ready);
-        
+		Boolean status = syncWorkerService.checkMasterConnection();
+        Map<String, Boolean> results = new HashMap<>();
+        results.put("ready", status);
         return results;
     }
 	
 	@RequestMapping(method = RequestMethod.GET, value = "/module/bahmnisyncworker/startPullData.form")
 	public @ResponseBody
-	Map<String, String> startDataPull() {
+	Map<String, Boolean> startDataPull() {
 		
-		String ready = "";
+		Map<String, Boolean> results = new HashMap<>();
+		Boolean ready = false;
 				
 		try{
-			syncWorkerService.startDataPull();
-			ready = "yes";
+			//ready = syncWorkerService.startDataPull();
+			ready = true;
 			
 		}catch(Exception e){
-			ready = "no";
+			ready = false;
 			log.error(e);
 		}
 		
-        Map<String, String> results = new HashMap<>();
 		results.put("ready", ready);
 		
 		return results;

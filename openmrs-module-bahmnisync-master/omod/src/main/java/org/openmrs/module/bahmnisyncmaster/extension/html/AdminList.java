@@ -45,7 +45,7 @@ public class AdminList extends AdministrationSectionExt {
 	public Map<String, String> getLinks() {
 		LinkedHashMap<String, String> map = new LinkedHashMap<String, String>();
 		map.put("module/bahmnisyncmaster/config.form", "Master Configuration");
-		map.put("module/bahmnisyncmaster/conflict.form", "Sync Conflicts");
+		map.put("module/bahmnisyncmaster/conflict2.form", "Sync Conflicts");
 		map.put("module/bahmnisyncmaster/log.form", "Sync Logs");
 		return map;
 	}

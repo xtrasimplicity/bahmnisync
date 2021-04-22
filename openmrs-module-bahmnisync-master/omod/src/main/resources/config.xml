@@ -43,18 +43,18 @@
 	</globalProperty>
 	
 	<globalProperty>
-		<property>@MODULE_ID@.sync.table</property>
-		<defaultValue></defaultValue>
+		<property>@MODULE_ID@.database.server.name</property>
+		<defaultValue>dbserver1</defaultValue>
 		<description>
-			List of table (comma separated), data to be pushed to master 
+			Database Server Name
 		</description>
 	</globalProperty>
 	
 	<globalProperty>
-		<property>@MODULE_ID@.debezium.connect.url</property>
-		<defaultValue></defaultValue>
+		<property>@MODULE_ID@.openmrs.schema.name</property>
+		<defaultValue>openmrs</defaultValue>
 		<description>
-			Debezium Connect URL
+			OpenMRS Schema Name
 		</description>
 	</globalProperty>
 	

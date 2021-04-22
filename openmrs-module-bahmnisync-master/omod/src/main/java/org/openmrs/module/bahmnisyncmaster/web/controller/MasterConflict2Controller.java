@@ -15,13 +15,17 @@ package org.openmrs.module.bahmnisyncmaster.web.controller;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.codehaus.jackson.JsonGenerationException;
+import org.codehaus.jackson.map.JsonMappingException;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -32,6 +36,8 @@ import java.util.Map;
 import java.util.Set;
 
 import org.openmrs.GlobalProperty;
+import org.openmrs.Patient;
+import org.openmrs.Person;
 import org.openmrs.api.AdministrationService;
 import org.openmrs.api.context.Context;
 import org.openmrs.module.bahmnisyncmaster.BahmniSyncMasterLog;
@@ -49,8 +55,8 @@ import org.springframework.web.context.request.WebRequest;
  * 'module/basicmodule/basicmoduleLink.form'.
  */
 @Controller
-@RequestMapping(value = "/module/bahmnisyncmaster/conflict.form")
-public class MasterConflictController {
+@RequestMapping(value = "/module/bahmnisyncmaster/conflict2.form")
+public class MasterConflict2Controller {
 	
 	@Autowired
 	DataPushService dataPullService;
@@ -59,12 +65,15 @@ public class MasterConflictController {
 	protected final Log log = LogFactory.getLog(getClass());
 	
 	/** Success form view name */
-	private final String SUCCESS_FORM_VIEW = "/module/bahmnisyncmaster/conflict";
+	private final String SUCCESS_FORM_VIEW = "/module/bahmnisyncmaster/conflict2";
 	
 	/**
 	 * Initially called after the formBackingObject method to get the landing form name
 	 * 
 	 * @return String form view name
+	 * @throws IOException 
+	 * @throws JsonMappingException 
+	 * @throws JsonGenerationException 
 	 */
 	@RequestMapping(method = RequestMethod.GET)
 	public String showForm() {
@@ -72,7 +81,7 @@ public class MasterConflictController {
 	}
 	
 	@ModelAttribute("mastersyncconflicts")
-	public List<BahmniSyncMasterLog> getModel() {
+	public String getModel() throws JsonGenerationException, JsonMappingException, IOException {
 		
 		List<BahmniSyncMasterLog> logs = dataPullService.getConflictBahmniSyncMasterLog();
 		
@@ -80,7 +89,7 @@ public class MasterConflictController {
 		for(BahmniSyncMasterLog log: logs){
 			String master = log.getMasterData();
 			String worker = log.getWorkerData();
-			
+						
 			Map<String, String> masterMap = convertWithStream(master);
 			Map<String, String> workerMap = convertWithStream(worker);
 			
@@ -107,20 +116,38 @@ public class MasterConflictController {
 			if(log.getTable().contains("concept")){
 				log.setStatus(masterMap.get("concept_id"));
 			} else if(log.getTable().contains("patient")){
-				log.setStatus(masterMap.get("patient_id"));
-			} else if(log.getTable().contains("person_id")){
-				log.setStatus(masterMap.get("person_id"));
+				/*Patient patient = Context.getPatientService().getPatientByUuid(masterMap.get("uuid"));
+				String patientString = patient.getGivenName() + " " + patient.getFamilyName() + "("+ patient.getPatientIdentifier() +")";
+				log.setStatus(patientString);*/
+			} else if(log.getTable().contains("person")){
+				
+				Patient patient = Context.getPatientService().getPatientByUuid(masterMap.get("uuid"));
+				System.out.println(patient);
+				if(patient == null){
+					
+					Person person = Context.getPersonService().getPersonByUuid(masterMap.get("uuid"));
+					System.out.println(person);
+					System.out.println("HERE!!!");
+					/*String personString = person.getGivenName() + " " + person.getFamilyName() + "(" + person.getPersonId() +")";
+					log.setStatus(personString);*/
+				}
+				else {
+					System.out.println("NOT HERE!!!");
+					/*String patientString = patient.getGivenName() + " " + patient.getFamilyName() + "("+ patient.getPatientIdentifier() +")";
+					log.setStatus(patientString);*/
+				}
 			} else if(log.getTable().equals("encounter") || log.getTable().equals("obs")){
 				log.setStatus(masterMap.get("encounter_id"));
 			} else {
-				log.setStatus(masterMap.get("-"));
+				log.setStatus("-");
 			}
 			
 			newLogs.add(log);
 		}
 		
-		return logs;
-		
+		ObjectMapper mapper = new ObjectMapper();
+		return mapper.writeValueAsString(logs);
+				
 	}
 	
 	public Map<String, String> convertWithStream(String mapAsString) {
@@ -130,7 +157,8 @@ public class MasterConflictController {
 	    String[] splitArray = mapAsString.split(",");
 	    for(String str : splitArray){
 	    	String[] mapArray = str.split("=");
-	    	map.put(mapArray[0],mapArray[1]);
+	    	if(mapArray.length == 2)
+	    		map.put(mapArray[0],mapArray[1]);
 	    }
 	    return map;
 	}

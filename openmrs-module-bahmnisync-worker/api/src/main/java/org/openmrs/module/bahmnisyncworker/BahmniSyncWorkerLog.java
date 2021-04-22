@@ -15,17 +15,19 @@ public class BahmniSyncWorkerLog {
 	
 	public BahmniSyncWorkerLog(){}
 	
-	public BahmniSyncWorkerLog(Date logDateTime, String message) {
+	public BahmniSyncWorkerLog(Date logDateTime, String message, String status) {
 		super();
 		this.logDateTime = logDateTime;
 		this.message = message;
+		this.status = status;
 	}
 
-	public BahmniSyncWorkerLog(Integer bahmniSyncLogId, Date logDateTime, String message) {
+	public BahmniSyncWorkerLog(Integer bahmniSyncLogId, Date logDateTime, String message, String status) {
 		super();
 		this.bahmniSyncLogId = bahmniSyncLogId;
 		this.logDateTime = logDateTime;
 		this.message = message;
+		this.status = status;
 	}
 
 	public Integer getBahmniSyncLogId() {
@@ -52,6 +54,14 @@ public class BahmniSyncWorkerLog {
 		this.message = message;
 	}
 	
+	public String getStatus() {
+		return status;
+	}
+
+	public void setStatus(String status) {
+		this.status = status;
+	}
+	
 	@Id
 	@GeneratedValue
 	@Column(name = "bahmnisync_log_id")
@@ -63,6 +73,7 @@ public class BahmniSyncWorkerLog {
 	@Column(name = "message", nullable = true)
 	private String message;
 	
-	
+	@Column(name = "status", nullable = true)
+	private String status;
 
 }

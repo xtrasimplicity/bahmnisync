@@ -13,7 +13,7 @@
         for a list of supported elements and attributes
     -->
  	
-	<changeSet id="bahmnisyncworker-2020-02-16-15:51" author="rabbia">
+	<changeSet id="bahmnisyncworker-2020-02-16-15:52" author="rabbia">
 		<preConditions onFail="MARK_RAN">
 			<not><tableExists tableName="bahmnisyncworker_log"/></not>
 		</preConditions>
@@ -26,6 +26,7 @@
 			</column>
 			<column name="log_datetime" type="datetime"/>
 			<column name="message" type="varchar(5000)"/>
+			<column name="status" type="varchar(50)"/>
 		</createTable>
     </changeSet>
  
