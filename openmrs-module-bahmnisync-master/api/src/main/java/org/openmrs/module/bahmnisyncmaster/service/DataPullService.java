@@ -65,7 +65,7 @@ public class DataPullService  {
 
 		sessionFactory.getCurrentSession().doWork(new Work() {
 			
-			public void execute(Connection con) {
+			public void execute(Connection con) throws SQLException {
 				
 					postObjects.clear();		
 					
@@ -96,7 +96,7 @@ public class DataPullService  {
 			                    JSONObject payload = json.getJSONObject("payload");
 			                    String db = payload.getJSONObject("source").getString("db");
 			                    String table = payload.getJSONObject("source").getString("table");
-			                    String pkColumn = null;
+			                    List<String> pkColumn = null;
 								try {
 									pkColumn = getPrimaryKey(table, con);
 								} catch (InstantiationException | IllegalAccessException | ClassNotFoundException
@@ -175,10 +175,10 @@ public class DataPullService  {
 			                			String cName = jObj.getString("field");
 			                			
 			                			String datatype = getColumnDataType(schema,cName);
-			                			if(datatype.equals(DataType.INT32.label) && cName.equals(pkColumn))
+			                			if(datatype.equals(DataType.INT32.label) && pkColumn.contains(cName))
 			                				jsonDataAfter.put(cName, "PK");  
 			                			
-			                			if(datatype.equals(DataType.INT32.label) && !cName.equals(pkColumn)  && !jsonDataAfter.get(cName).equals(null)){
+			                			if(datatype.equals(DataType.INT32.label) && !pkColumn.contains(cName) && !jsonDataAfter.get(cName).equals(null)){
 		        		    				if(jsonDataAfter.get(cName) instanceof java.lang.Integer){
 		        		    					String className = getColumnClassName(schema,cName);
 		        		    					if(className != null && className.equals("org.apache.kafka.connect.data.Date")){
@@ -211,7 +211,7 @@ public class DataPullService  {
 			                   } 
 			                    
 			                    String queryForPost = getQueryForPost(payload.getString("op"), payload.getJSONObject("source").getString("table"), schema, jsonDataAfter, 
-			                    		jsonDataBefore, pkColumn, fkJsonArray);
+			                    		jsonDataBefore, pkColumn, fkJsonArray, con);
 			                    
 			                    postJB.put("fk", fkJsonArray);
 			                    postJB.put("data", jsonDataAfter);
@@ -298,16 +298,18 @@ public class DataPullService  {
 		return consumer;
      }
 	
-	public String getPrimaryKey(String tableName, Connection con) throws SQLException, InstantiationException, IllegalAccessException, ClassNotFoundException{
+	public static List<String> getPrimaryKey(String tableName, Connection con) throws SQLException, InstantiationException, IllegalAccessException, ClassNotFoundException{
     	ResultSet rs = null;
     	String pk = null;
     	DatabaseMetaData meta = con.getMetaData();
+    	List<String> pkList = new ArrayList();
     	rs = meta.getPrimaryKeys(null, null, tableName);
     	while (rs.next()) {
     	      pk = rs.getString("COLUMN_NAME");
-    	      break;
+    	      if(!pkList.contains(pk))
+    	    	  pkList.add(pk);
     	    }
-    	return pk;
+    	return pkList;
     }
 	
 	private static String getColumnDataType(JSONObject schema, String columnName) {
@@ -367,11 +369,11 @@ public class DataPullService  {
 		}
 	 
 	 private static String getQueryForPost(String op, String table, JSONObject schema, JSONObject data,
-		        JSONObject dataBefore, String pkColumn, JSONArray fkJsonArray) {
+		        JSONObject dataBefore, List<String> pkColumn, JSONArray fkJsonArray, Connection con) throws SQLException {
 			
 			if (op.equals("u")) {
 				
-				return makeUpdateQuery(table, schema, data, pkColumn, fkJsonArray);
+				return makeUpdateQuery(table, schema, data, pkColumn, fkJsonArray, con);
 				
 			} else if (op.equals("c")) {
 				
@@ -379,28 +381,38 @@ public class DataPullService  {
 				
 			} else if (op.equals("d")) {
 				
-				return makeDeleteQuery(table, schema, pkColumn, dataBefore);
+				return makeDeleteQuery(table, schema, pkColumn, dataBefore, con);
 			}
 			
 			return "";
 			
 		}
-	 
-	 private static String makeDeleteQuery(String table, JSONObject schema, String pkColumn, JSONObject data) {
+		
+		private static String makeDeleteQuery(String table, JSONObject schema, List<String> pkColumn, JSONObject data, Connection con) throws SQLException {
 			
 			StringBuilder deleteQuery = new StringBuilder("DELETE FROM " + table + " WHERE ");
 			
-			String datatype = getColumnDataType(schema, pkColumn);
-			if (datatype.equals(DataType.INT32.label))
-				deleteQuery.append("uuid = '" + data.getString("uuid") + "';");
-			else if (datatype.equals(DataType.STRING.label))
-				deleteQuery.append(pkColumn + " = '" + data.getString(pkColumn) + "';");
+			String query = "SHOW COLUMNS FROM " + table + " LIKE 'uuid'";
+			
+			Statement st = con.createStatement();
+	        ResultSet rs = st.executeQuery(query);
+	       
+	        if (rs.next() == false) {
+	           
+	        	for(String pk : pkColumn)
+	        		deleteQuery.append(pk + " = <" + pk + "> and ");
+
+	        	deleteQuery.append("1 = 1");
+	        	
+	        }else {
+	        	deleteQuery.append("uuid = '" + data.getString("uuid") + "';");
+	        }
 			
 			return deleteQuery.toString();
 			
 		}
 		
-	 private static String makeCreateQuery(String table, JSONObject schema, JSONObject data, String pkColumn,
+		private static String makeCreateQuery(String table, JSONObject schema, JSONObject data, List<String> pkColumn,
 		        JSONArray fkJsonArray) {
 			
 			StringBuilder fieldsString = new StringBuilder();
@@ -415,7 +427,7 @@ public class DataPullService  {
 				JSONObject jObj = fieldsArray.getJSONObject(j);
 				String cName = jObj.getString("field");
 				
-				if(pkColumn.equalsIgnoreCase(cName)){
+				if(pkColumn.contains(cName)){
 					
 					if (isForeignKey(cName, fkJsonArray)) {
 						fieldsString.append(cName + ",");
@@ -425,7 +437,7 @@ public class DataPullService  {
 					
 				}
 				
-				if ((!pkColumn.equalsIgnoreCase(cName)) && (!data.get(cName).equals(null))) {
+				if ((!pkColumn.contains(cName)) && (!data.get(cName).equals(null))) {
 					fieldsString.append(cName + ",");
 					
 					if (isForeignKey(cName, fkJsonArray)) {
@@ -475,8 +487,8 @@ public class DataPullService  {
 			
 		}
 		
-		private static String makeUpdateQuery(String table, JSONObject schema, JSONObject data, String pkColumn,
-		        JSONArray fkJsonArray) {
+		private static String makeUpdateQuery(String table, JSONObject schema, JSONObject data, List<String> pkColumn,
+		        JSONArray fkJsonArray, Connection con) throws SQLException {
 			
 			JSONArray fieldsArray = getJSONArrayFromSchema(schema, "after");
 			StringBuilder updateQuery = new StringBuilder("update " + table + " set ");
@@ -488,7 +500,7 @@ public class DataPullService  {
 				JSONObject jObj = fieldsArray.getJSONObject(j);
 				String cName = jObj.getString("field");
 							
-				if ((!pkColumn.equalsIgnoreCase(cName)) && (!data.get(cName).equals(null))) {
+				if ((!pkColumn.contains(cName)) && (!data.get(cName).equals(null))) {
 					updateQuery.append(cName + " = ");
 					
 					if (isForeignKey(cName, fkJsonArray)) {
@@ -534,16 +546,30 @@ public class DataPullService  {
 			}
 			
 			updateQuery = new StringBuilder(updateQuery.substring(0, updateQuery.length() - 1));
-			String datatype = getColumnDataType(schema, pkColumn);
 			
 			if(table.equals("patient")){
 				updateQuery.append(" where patient_id = <person_id>");
 			}
 			else{
-				if (datatype.equals(DataType.INT32.label))
-					updateQuery.append(" where uuid = '" + data.getString("uuid") + "';");
-				else if (datatype.equals(DataType.STRING.label))
-					updateQuery.append(" where" + pkColumn + " = '" + data.getString(pkColumn) + "';");
+				
+				updateQuery.append( "where ");
+				
+				String query = "SHOW COLUMNS FROM " + table + " LIKE 'uuid'";
+
+				Statement st = con.createStatement();
+		        ResultSet rs = st.executeQuery(query);
+		       
+		        if (rs.next() == false) {
+		           
+		        	for(String pk : pkColumn)
+		        		updateQuery.append(pk + " = <" + pk + "> and ");
+
+		        	updateQuery.append("1 = 1");
+		        	
+		        }else {
+		        	updateQuery.append("uuid = '" + data.getString("uuid") + "';");
+		        }
+
 			}
 			
 			return updateQuery.toString();

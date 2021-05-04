@@ -1,7 +1,7 @@
 <%@ include file="/WEB-INF/template/include.jsp"%>
 <%@ include file="/WEB-INF/template/header.jsp"%>
 
-<openmrs:require privilege="Manage Bahmni Sync" otherwise="/login.htm" redirect="/module/bahmnisyncmaster/log.form" />
+<openmrs:require privilege="Manage Bahmni Sync" otherwise="/login.htm" redirect="/module/bahmnisyncmaster/errors.form" />
 </br>
 <%@ include file="template/localHeader.jsp" %>
 
@@ -78,7 +78,7 @@ tr:nth-child(even) {
 	  <th>Date of Sync</th>
 	  <th>Worker Node ID </th>
 	  <th>Table</th>
-	  <th>Status</th> 
+	  <th>Error</th> 
 	  <th>Data</th> 
  
 </tr>
@@ -128,7 +128,7 @@ $(document).ready(function(){
 	   return dateInput;
 	 }	
 	
-	var data =eval('${mastersynclogs}');
+	var data =eval('${mastersyncerrors}');
 
 	var table = $('#example').DataTable( {
 	"aaData": data,
@@ -138,7 +138,7 @@ $(document).ready(function(){
 		    }},
 			{ "mData": "workerId"},
 			{ "mData": "table"},
-			{ "mData": "status"},
+			{ "mData": "message"},
 			{ "mData": "workerData"}
 		],
 	 "dom": 'Bfrtip',

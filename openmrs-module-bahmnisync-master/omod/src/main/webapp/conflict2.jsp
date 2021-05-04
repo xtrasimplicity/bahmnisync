@@ -21,7 +21,13 @@
     <script type="text/javascript" src="https://cdn.datatables.net/colreorder/1.3.2/js/dataTables.colReorder.js"></script>
     <script type="text/javascript" src="https://cdn.datatables.net/buttons/1.2.2/js/dataTables.buttons.min.js"></script>
     <script type="text/javascript" src="https://cdn.datatables.net/buttons/1.2.2/js/buttons.html5.min.js"></script>
-    <script type="text/javascript" src="https://cdn.datatables.net/buttons/1.2.2/js/buttons.print.min.js"></script>
+   <script type="text/javascript" src="https://cdn.datatables.net/buttons/1.2.2/js/buttons.print.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.3/jszip.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/pdfmake.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/vfs_fonts.js"></script>
+    <script type="text/javascript" src="https://cdn.datatables.net/buttons/1.7.0/js/dataTables.buttons.min.js"></script>
+
+
 
 </head>
 
@@ -50,7 +56,7 @@ td, th {
 }
 
 tr:nth-child(even) {
-  background-color: #dddddd;
+  background-color: #CBC3E3;
 }
 
 </style> 
@@ -70,7 +76,6 @@ tr:nth-child(even) {
  
 <tr>
  
-
 <th>Date of Sync</th>
 	  <th>Worker Node ID </th>
 	  <th>Table</th>
@@ -79,7 +84,8 @@ tr:nth-child(even) {
 	  	 <i> Column Name: Master Value, Worker Value </i>
 	  </th> 
 	  <th>Result</th> 
-	  <th>Entity Details<tn>
+	  <th>Entity Details</th>
+	  <th class="noExport"></th>
  
 </tr>
  
@@ -95,8 +101,28 @@ tr:nth-child(even) {
 
 <script type="text/javascript">
 
-$(document).ready(function(){
+function myFunction(id) {
+	var x = document.getElementById(id).text;
+	if(x === 'Mark as Resolved'){
+		
+		$.ajax({
+            "url": "${pageContext.request.contextPath}/module/bahmnisyncmaster/resolveConflict.form?id="+id,
+            "type": "GET",
+            "success": function(response) 
+            {
+            	document.getElementById(id).innerHTML = "Resolved";
+            },
+            "error": function(e){
+                alert("Error, while marking conflict as resolved.");
+            }
+        });
+		
+		
+	}
 	
+}
+
+$(document).ready(function(){
 	
 	function formatJSONDate(dateInput, type) {
 	   if (dateInput === null) {
@@ -140,11 +166,53 @@ $(document).ready(function(){
 			{ "mData": "table"},
 			{ "mData": "masterData"},
 			{ "mData": "message"},
-			{ "mData": "status"}
-		]
+			{ "mData": "status"},
+			{
+				"mData": "bahmniSyncLogId",
+				"mRender": function ( data, type, row ) {
+				    return '<a id="'+data+'" onclick="myFunction(this.id)">Mark as Resolved</a>';
+				  }
+            }
+			
+		],
+		"dom": 'Bfrtip',
+		 "buttons": [
+			 {"extend": "copyHtml5", filename: function () {
+				 var d = new Date();
+				 var strDate = d.getFullYear() + "-" + (d.getMonth()+1) + "-" + d.getDate();
+		         return strDate + ' - Sync Condlicts';
+		      },exportOptions: {
+                  columns: "thead th:not(.noExport)"
+              }},
+			 {"extend": "excelHtml5", filename: function () {
+				 var d = new Date();
+				 var strDate = d.getFullYear() + "-" + (d.getMonth()+1) + "-" + d.getDate();
+		         return strDate + ' - Sync Condlicts';
+		      },exportOptions: {
+                  columns: "thead th:not(.noExport)"
+              }},
+			 {"extend": "csvHtml5", filename: function () {
+				 var d = new Date();
+				 var strDate = d.getFullYear() + "=" + (d.getMonth()+1) + "-" + d.getDate();
+		         return strDate + ' - Sync Condlicts';
+		      },exportOptions: {
+                  columns: "thead th:not(.noExport)"
+              }},
+			 {"extend": "pdfHtml5", filename: function () {
+				 var d = new Date();
+				 var strDate = d.getFullYear() + "-" + (d.getMonth()+1) + "-" + d.getDate();
+		         return strDate + ' - Sync Condlicts';
+		      },exportOptions: {
+                  columns: "thead th:not(.noExport)"
+              }}
+	        ]
 		});
+
+	
 	});
 </script>
 
 </html>
+
+<%@ include file="/WEB-INF/template/footer.jsp" %>
 

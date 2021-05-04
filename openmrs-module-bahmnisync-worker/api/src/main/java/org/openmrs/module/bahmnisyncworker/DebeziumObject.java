@@ -3,6 +3,7 @@ package org.openmrs.module.bahmnisyncworker;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 
@@ -13,11 +14,11 @@ public class DebeziumObject {
 	private String table;
 	private Map<String, Object> data;
 	private ArrayList<Map<String, Object>> fk;
-	private String pk; 
+	private List<String> pk; 
 	private String query;
 
 	public DebeziumObject(String op, String db, String table,  Map<String, Object> data, 
-			ArrayList<Map<String, Object>> fk, String pk, String query) {
+			ArrayList<Map<String, Object>> fk, List<String> pk, String query) {
 		this.op = op;
 		this.db = db;
 		this.table = table;
@@ -51,7 +52,7 @@ public class DebeziumObject {
 		data.put(colName, value);
 	}
 
-	public String getPk() {
+	public List<String> getPk() {
 		return pk;
 	}
 	
@@ -79,7 +80,7 @@ public class DebeziumObject {
 		this.fk = fk;
 	}
 
-	public void setPk(String pk) {
+	public void setPk(List<String> pk) {
 		this.pk = pk;
 	}
 

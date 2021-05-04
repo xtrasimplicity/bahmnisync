@@ -27,7 +27,8 @@
 	</modules>
 	
 	<properties>
-		<openMRSVersion>1.9.9</openMRSVersion>
+		<wsrestVersion>2.17</wsrestVersion>
+		<openMRSVersion>2.0.4</openMRSVersion>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 	</properties>
 

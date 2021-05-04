@@ -42,6 +42,7 @@ import org.openmrs.module.bahmnisyncworker.BahmniSyncWorkerService;
 import org.openmrs.module.bahmnisyncworker.util.BahmniSyncWorkerConstants;
 import org.openmrs.web.WebConstants;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.ModelMap;
 import org.springframework.validation.Errors;
@@ -75,7 +76,7 @@ public class WorkerSyncController {
 	 * 
 	 * @return String form view name
 	 */
-	@RequestMapping(method = RequestMethod.GET, value = "module/bahmnisyncworker/sync.form")
+	@RequestMapping(method = RequestMethod.GET, value = "/module/bahmnisyncworker/sync.form")
 	public String showForm(final ModelMap modelMap) {
 		
 		List<BahmniSyncWorkerLog> logs = syncWorkerService.getAllBahmniSyncWorkerLog();
@@ -105,7 +106,7 @@ public class WorkerSyncController {
 	Map<String, Boolean> startDataPush() {
 		
 		Map<String, Boolean> results = new HashMap<>();
-		Boolean ready = true;	
+		Boolean ready = false;	
 		try{
 
 			ready = syncWorkerService.startDataPush();
@@ -180,7 +181,6 @@ public class WorkerSyncController {
 		try{
 			//ready = syncWorkerService.startDataPull();
 			ready = true;
-			
 		}catch(Exception e){
 			ready = false;
 			log.error(e);

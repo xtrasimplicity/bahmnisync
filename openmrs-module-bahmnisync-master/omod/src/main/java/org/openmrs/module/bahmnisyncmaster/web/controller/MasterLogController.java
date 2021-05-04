@@ -15,11 +15,15 @@ package org.openmrs.module.bahmnisyncmaster.web.controller;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.codehaus.jackson.JsonGenerationException;
+import org.codehaus.jackson.map.JsonMappingException;
+import org.codehaus.jackson.map.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -67,9 +71,19 @@ public class MasterLogController {
 	}
 	
 	@ModelAttribute("mastersynclogs")
-	public List<BahmniSyncMasterLog> getModel() {
+	public String getModel() throws JsonGenerationException, JsonMappingException, IOException {
 		
-		return dataPullrService.getAllBahmniSyncMasterLog();
+		List<BahmniSyncMasterLog> logs = dataPullrService.getAllBahmniSyncMasterLog();
+		
+		List<BahmniSyncMasterLog> newLogs = new ArrayList();
+		for(BahmniSyncMasterLog log: logs){
+			log.setMessage(log.getMessage().replace("'", ""));
+			newLogs.add(log);
+		}
+
+		
+		ObjectMapper mapper = new ObjectMapper();
+		return mapper.writeValueAsString(logs);
 		
 	}
 	

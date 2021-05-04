@@ -27,7 +27,13 @@
 		<a
 				href="${pageContext.request.contextPath}/module/bahmnisyncmaster/conflict2.form">Conflicts</a>
 	</li>
-
+	
+	<li
+			<c:if test='<%= request.getRequestURI().contains("/error") %>'>class="active"</c:if>>
+		<a
+				href="${pageContext.request.contextPath}/module/bahmnisyncmaster/errors.form">Errors</a>
+	</li>
+	
 	<li
 			<c:if test='<%= request.getRequestURI().contains("/log") %>'>class="active"</c:if>>
 		<a
