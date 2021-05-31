@@ -16,6 +16,8 @@ public class BahmniSyncMasterConstants {
 	
 	public static final String OPENMRS_SCHEME_NAME = MODULE_ID + ".openmrs.schema.name";
 	
+	public static final String CONFLICT_RESOLUTION_RULE = MODULE_ID + ".conflict.resolution.rule";
+	
 	
 	/* Privileges*/
 	public static final String MANAGE_BAHMNI_SYNC_PRIVILEGE = "Manage Bahmni Sync";

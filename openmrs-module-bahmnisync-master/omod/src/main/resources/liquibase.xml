@@ -33,5 +33,59 @@
 			<column name="table_name" type="varchar(50)"/>
 		</createTable>
     </changeSet>
+    
+    <changeSet id="create-rebuild-search-index-task-2020-05-04-16:42" author="rabbia">
+        <preConditions>
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM scheduler_task_config WHERE name = "Rebuild Search Index";
+            </sqlCheck>
+        </preConditions>
+        <sql>
+            INSERT INTO
+            scheduler_task_config(name, description, schedulable_class, start_time, start_time_pattern, repeat_interval,
+            start_on_startup, created_by, date_created, uuid)
+            VALUES
+            ('Rebuild Search Index', 'Rebuild Search Index', 'org.openmrs.module.bahmnisyncmaster.task.RebuildSearchIndexTask',
+            TIMESTAMP(CURDATE()), 'MM/dd/yyyy HH:mm:ss', 86400, TRUE, 1, NOW(), UUID());
+        </sql>
+    </changeSet>
+    
+    <changeSet id="create-clean-bahmnisync-logs-task-2020-05-04-16:47" author="rabbia">
+        <preConditions>
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM scheduler_task_config WHERE name = "Bahmnisync logs cleanup";
+            </sqlCheck>
+        </preConditions>
+        <sql>
+            INSERT INTO
+            scheduler_task_config(name, description, schedulable_class, start_time, start_time_pattern, repeat_interval,
+            start_on_startup, created_by, date_created, uuid)
+            VALUES
+            ('Bahmnisync logs cleanup', 'Bahmnisync logs cleanup', 'org.openmrs.module.bahmnisyncmaster.task.CleanLogsTask',
+            TIMESTAMP(CURDATE()), 'MM/dd/yyyy HH:mm:ss', 2592000, TRUE, 1, NOW(), UUID());
+        </sql>
+    </changeSet>
+    
+    <changeSet id="bahmnisyncmaster-2020-05-12-11:51" author="rabbia">
+		<preConditions onFail="MARK_RAN">
+			<not><tableExists tableName="bahmnisyncmaster_obs_conflicts"/></not>
+		</preConditions>
+		<comment>
+			Creating the bahmnisyncmaster_obs_conflicts
+		</comment>
+		<createTable tableName="bahmnisyncmaster_obs_conflicts">
+			<column name="bahmnisyncmaster_obs_conflicts_id" type="int" autoIncrement="true">
+				<constraints primaryKey="true" nullable="false"/>
+			</column>
+			<column name="log_datetime" type="datetime"/>
+			<column name="worker_id" type="varchar(50)"/>
+			<column name="worker_data" type="varchar(5000)"/>
+			<column name="master_data" type="varchar(5000)"/>
+			<column name="concept_id" type="int"/>
+			<column name="encounter_id" type="int"/>
+			<column name="patient_id" type="int"/>
+			<column name="value_type" type="varchar(50)"/>
+		</createTable>
+    </changeSet>
  
 </databaseChangeLog>

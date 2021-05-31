@@ -179,8 +179,8 @@ public class WorkerSyncController {
 		Boolean ready = false;
 				
 		try{
-			//ready = syncWorkerService.startDataPull();
-			ready = true;
+			ready = syncWorkerService.startDataPull();
+			//ready = true;
 		}catch(Exception e){
 			ready = false;
 			log.error(e);

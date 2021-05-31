@@ -58,6 +58,14 @@
 		</description>
 	</globalProperty>
 	
+	<globalProperty>
+		<property>@MODULE_ID@.conflict.resolution.rule</property>
+		<defaultValue>latest date_updated</defaultValue>
+		<description>
+			options: latest date_updated, earliest date_updated, master always, worker always
+		</description>
+	</globalProperty>
+	
 	<!-- Maps hibernate file's, if present -->
 	<mappingFiles>
 				

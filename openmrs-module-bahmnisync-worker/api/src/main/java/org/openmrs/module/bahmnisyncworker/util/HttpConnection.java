@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 
 import org.json.JSONObject;
+import org.openmrs.api.context.Context;
 
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -17,7 +18,8 @@ import okhttp3.Route;
 
 public class HttpConnection {
 	
-	public static OkHttpClient client = createAuthenticatedClient("admin", "Admin123");
+	public static OkHttpClient client = createAuthenticatedClient(Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.MASTER_NODE_USER),
+			Context.getAdministrationService().getGlobalProperty(BahmniSyncWorkerConstants.MASTER_NODE_PASSWORD));
 	
 	public static JSONObject doPost(String url, String json) {
 		JSONObject jsonObjectResp = null;

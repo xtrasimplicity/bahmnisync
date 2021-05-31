@@ -1,7 +1,7 @@
 <%@ include file="/WEB-INF/template/include.jsp"%>
 <%@ include file="/WEB-INF/template/header.jsp"%>
 
-<openmrs:require privilege="Manage Bahmni Sync" otherwise="/login.htm" redirect="/module/bahmnisyncmaster/conflict2.form" />
+<openmrs:require privilege="Manage Bahmni Sync" otherwise="/login.htm" redirect="/module/bahmnisyncmaster/obsconflict.form" />
 </br>
 <%@ include file="template/localHeader.jsp" %>
 
@@ -64,7 +64,7 @@ tr:nth-child(even) {
 
 <body>
 
-<h2>Sync Conflicts</h2>
+<h2>Sync Obs Conflicts</h2>
 
 <table id="example">
  
@@ -77,14 +77,12 @@ tr:nth-child(even) {
 <tr>
  
 <th>Date of Sync</th>
-	  <th>Worker Node ID </th>
-	  <th>Table</th>
-	  <th>
-	  	 Conflicts <br/> 
-	  	 <i> Column Name: Master Value, Worker Value </i>
-	  </th> 
-	  <th>Result</th> 
-	  <th>Entity Details</th>
+<th>Worker Node ID </th>
+<th>Patient</th>
+<th>Encounter</th>
+<th>Concept</th>
+<th>Worker Data</th>
+<th>Master Data</th>
 	  <th class="noExport"></th>
  
 </tr>
@@ -107,7 +105,7 @@ function myFunction(id) {
 		
 		if (confirm('Are you sure you want to mark this conflict as resolved?')) {
 			$.ajax({
-	            "url": "${pageContext.request.contextPath}/module/bahmnisyncmaster/resolveConflict.form?id="+id,
+	            "url": "${pageContext.request.contextPath}/module/bahmnisyncmaster/resolveObsConflict.form?id="+id,
 	            "type": "GET",
 	            "success": function(response) 
 	            {
@@ -117,9 +115,9 @@ function myFunction(id) {
 	                alert("Error, while marking conflict as resolved.");
 	            }
 	        });
-		}
-		
+		} 
 	}
+	
 }
 
 $(document).ready(function(){
@@ -163,12 +161,13 @@ $(document).ready(function(){
 		        return formatJSONDate(data, 'display');
 		    }},
 			{ "mData": "workerId"},
-			{ "mData": "table"},
-			{ "mData": "masterData"},
-			{ "mData": "message"},
-			{ "mData": "status"},
+			{"mData": "patient"},
+			{"mData": "encounter"},
+			{"mData": "concept"},
+			{"mData": "workerData"},
+			{"mData": "masterData"},
 			{
-				"mData": "bahmniSyncLogId",
+				"mData": "bahmniSyncObsConflictId",
 				"mRender": function ( data, type, row ) {
 				    return '<a id="'+data+'" onclick="myFunction(this.id)">Mark as Resolved</a>';
 				  }
@@ -180,28 +179,28 @@ $(document).ready(function(){
 			 {"extend": "copyHtml5", filename: function () {
 				 var d = new Date();
 				 var strDate = d.getFullYear() + "-" + (d.getMonth()+1) + "-" + d.getDate();
-		         return strDate + ' - Sync Conflicts';
+		         return strDate + ' - Obs Sync Conflicts';
 		      },exportOptions: {
                   columns: "thead th:not(.noExport)"
               }},
 			 {"extend": "excelHtml5", filename: function () {
 				 var d = new Date();
 				 var strDate = d.getFullYear() + "-" + (d.getMonth()+1) + "-" + d.getDate();
-		         return strDate + ' - Sync Conflicts';
+		         return strDate + ' - Obs Sync Conflicts';
 		      },exportOptions: {
                   columns: "thead th:not(.noExport)"
               }},
 			 {"extend": "csvHtml5", filename: function () {
 				 var d = new Date();
 				 var strDate = d.getFullYear() + "=" + (d.getMonth()+1) + "-" + d.getDate();
-		         return strDate + ' - Sync Conflicts';
+		         return strDate + ' - Obs Sync Conflicts';
 		      },exportOptions: {
                   columns: "thead th:not(.noExport)"
               }},
 			 {"extend": "pdfHtml5", filename: function () {
 				 var d = new Date();
 				 var strDate = d.getFullYear() + "-" + (d.getMonth()+1) + "-" + d.getDate();
-		         return strDate + ' - Sync Conflicts';
+		         return strDate + ' - Obs Sync Conflicts';
 		      },exportOptions: {
                   columns: "thead th:not(.noExport)"
               }}

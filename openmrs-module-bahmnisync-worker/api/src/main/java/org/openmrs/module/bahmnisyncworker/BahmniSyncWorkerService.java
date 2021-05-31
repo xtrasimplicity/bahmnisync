@@ -252,10 +252,11 @@ public class BahmniSyncWorkerService  {
 				
 				try {
 					String[] array = {"person",
-			                "provider,users",
-			                "concept,encounter_type,person_name,person_address,person_attribute,patient,location,location_attribute_type",
-							"location_attribute,concept_answer,concept_attribute,concept_attribute_type,concept_class,concept_complex,concept_datatype,concept_description,concept_map_type,concept_name,concept_name_tag,concept_name_tag_map,concept_numeric,concept_proposal,concept_proposal_tag_map,concept_reference_map,concept_reference_source,concept_reference_term,concept_reference_term_map,concept_set,concept_state_conversion,concept_stop_word,patient_identifier,encounter",
-							"encounter_provider,obs"};
+			                "users,adress_hierarchy,address_hierarchy_level,address_hierarchy_type",
+			                "relationship_type,episode,provider_attribute_type,address_hierarchy_entry,program,program_attribute_type,concept,encounter_type,encounter_role,person_name,person_address,person_attribute_type,patient,location,location_attribute_type",
+							"relationship,provider,address_hierarchy_address_to_entry_map,drug,patient_progarm,person_attribute,location_attribute,concept_attribute,concept_attribute_type,concept_class,concept_complex,concept_datatype,concept_description,concept_map_type,concept_name,concept_name_tag,concept_name_tag_map,concept_numeric,concept_proposal,concept_proposal_tag_map,concept_reference_map,concept_reference_source,concept_reference_term,concept_reference_term_map,concept_set,concept_state_conversion,concept_stop_word,patient_identifier,encounter",
+							"encounter_diagnosis,episode_encounter,episode_patient_program,provider_attribute,concept_answer,drug_ingredient,drug_reference_map,orders,patient_program_attribute,encounter_provider,obs",
+							"drug_orders"};
 							
 					for(String table : array) {
 					
@@ -324,9 +325,10 @@ public class BahmniSyncWorkerService  {
 			
 			String[] array = {"person",
 	                "provider,users",
-	                "location,location_attribute_type,location_tag,person_name,person_address,person_attribute,patient",
-					"location_attribute,location_tag_map,patient_identifier,encounter",
-					"encounter_provider,obs"};
+	                "provider_attribute,episode,location,location_attribute_type,location_tag,person_name,person_address,person_attribute,patient",
+					"patient_program,location_attribute,location_tag_map,patient_identifier,encounter",
+					"orders,episode_encounter,episode_patient_program,patient_program_attribute,encounter_provider,obs",
+					"drug_order"};
 			
 			for(String topic : array){
 							

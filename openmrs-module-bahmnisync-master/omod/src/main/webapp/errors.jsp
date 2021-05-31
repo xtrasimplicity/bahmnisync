@@ -146,22 +146,22 @@ $(document).ready(function(){
 		 {"extend": "copyHtml5", filename: function () {
 			 var d = new Date();
 			 var strDate = d.getFullYear() + "-" + (d.getMonth()+1) + "-" + d.getDate();
-	         return strDate + ' - Sync Condlicts';
+	         return strDate + ' - Sync Errors';
 	      }},
 		 {"extend": "excelHtml5", filename: function () {
 			 var d = new Date();
 			 var strDate = d.getFullYear() + "-" + (d.getMonth()+1) + "-" + d.getDate();
-	         return strDate + ' - Sync Condlicts';
+	         return strDate + ' - Sync Errors';
 	      }},
 		 {"extend": "csvHtml5", filename: function () {
 			 var d = new Date();
 			 var strDate = d.getFullYear() + "=" + (d.getMonth()+1) + "-" + d.getDate();
-	         return strDate + ' - Sync Condlicts';
+	         return strDate + ' - Sync Errors';
 	      }},
 		 {"extend": "pdfHtml5", filename: function () {
 			 var d = new Date();
 			 var strDate = d.getFullYear() + "-" + (d.getMonth()+1) + "-" + d.getDate();
-	         return strDate + ' - Sync Condlicts';
+	         return strDate + ' - Sync Errors';
 	      }}
        ]
 		});

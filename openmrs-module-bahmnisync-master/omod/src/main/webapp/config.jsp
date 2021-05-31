@@ -51,6 +51,9 @@
 				<c:if test="${prop.property == 'bahmnisyncmaster.openmrs.schema.name' }">
 					OpenMRS Schema Name
 				</c:if>
+				<c:if test="${prop.property == 'bahmnisyncmaster.conflict.resolution.rule' }">
+					Conflict Resolution Rule
+				</c:if>
 				
 				</h4>
 				<span class="settingValue">

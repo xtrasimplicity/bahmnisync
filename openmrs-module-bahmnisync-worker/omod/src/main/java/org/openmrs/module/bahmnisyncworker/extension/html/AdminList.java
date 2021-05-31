@@ -39,6 +39,10 @@ public class AdminList extends AdministrationSectionExt {
 		return "Bahmni Sync Worker";
 	}
 	
+	public String getRequiredPrivilege() {
+		return "Manage Bahmni Sync";
+	}
+	
 	/**
 	 * @see AdministrationSectionExt#getLinks()
 	 */

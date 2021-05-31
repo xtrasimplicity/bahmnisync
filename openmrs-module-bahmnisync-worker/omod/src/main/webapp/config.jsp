@@ -60,6 +60,12 @@
 				<c:if test="${prop.property == 'bahmnisyncworker.openmrs.schema.name' }">
 					OpenMRS Schema Name
 				</c:if>
+				<c:if test="${prop.property == 'bahmnisyncworker.master.node.user' }">
+					Bahmni Sync Master Node user
+				</c:if>
+				<c:if test="${prop.property == 'bahmnisyncworker.master.node.password' }">
+					Bahmni Sync Master Node password
+				</c:if>
 				
 				</h4>
 				<span class="settingValue">

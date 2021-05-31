@@ -91,5 +91,15 @@ public class MasterSyncController {
 		return s.toString();
         
     }
+	
+	@RequestMapping(value = "/cleanlog", method = RequestMethod.GET)
+	@ResponseBody
+    public String cleanLog()  throws Exception {
+			
+		dataPullService.cleanLog();        
+		return "DONE";
+        
+    }
+
 
 }

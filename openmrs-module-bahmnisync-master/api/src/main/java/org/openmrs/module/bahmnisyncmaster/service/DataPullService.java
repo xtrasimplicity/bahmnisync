@@ -1,5 +1,7 @@
 package org.openmrs.module.bahmnisyncmaster.service;
 
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -45,6 +47,7 @@ import org.openmrs.api.APIException;
 import org.openmrs.api.context.Context;
 import org.openmrs.api.db.hibernate.DbSessionFactory;
 import org.openmrs.module.bahmnisyncmaster.util.BahmniSyncMasterConstants;
+import org.openmrs.module.bahmnisyncmaster.util.CommandType;
 import org.openmrs.module.bahmnisyncmaster.util.DataType;
 import org.openmrs.module.bahmnisyncmaster.util.DatabaseUtil;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -602,6 +605,78 @@ public class DataPullService  {
 			}
 			
 			return null;
+		}
+		
+		
+		@Transactional
+	    @Authorized(BahmniSyncMasterConstants.MANAGE_BAHMNI_SYNC_PRIVILEGE)
+		public void cleanLog() {
+			
+			sessionFactory.getCurrentSession().doWork(new Work() {
+				
+				public void execute(Connection con) throws SQLException {
+					
+					Date date = Calendar.getInstance().getTime();  
+					DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");  
+					String strDate = dateFormat.format(date);  
+					
+					String filename = System.getProperty("user.dir") + File.separator + strDate + "-BahmniSyncLog";
+					
+					System.out.println("------"+filename+"------");
+					
+					FileWriter fw = null;
+					
+					try {
+					
+						fw = new FileWriter(filename + ".csv");
+												
+						Statement st = con.createStatement();
+						String query = "select * from bahmnisyncmaster_log";
+						ResultSet rs = st.executeQuery(query);
+						
+						int cols = rs.getMetaData().getColumnCount();
+	
+				         for(int i = 1; i <= cols; i ++){
+				            fw.append(rs.getMetaData().getColumnLabel(i));
+				            if(i < cols) fw.append(',');
+				            else fw.append('\n');
+				         }
+	
+				         while (rs.next()) {
+	
+				            for(int i = 1; i <= cols; i ++){
+				            	if(rs.getString(i) == null)
+				            		fw.append(rs.getString(i));
+				            	else	
+					            	fw.append(rs.getString(i).replace(",", "  "));
+				            	
+				                if(i < cols) fw.append(',');
+				            }
+				            fw.append('\n');
+				            
+				            int id = rs.getInt("bahmnisync_log_id");
+				            System.out.println(id);
+				            
+				            DatabaseUtil.runCommand(CommandType.DELETE, "delete from bahmnisyncmaster_log where bahmnisync_log_id = " + id, con);
+				        }
+				       
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} finally {
+						
+						 try {
+							fw.flush();
+						    fw.close();
+						} catch (IOException e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}
+					}
+				}				
+				
+			});	
+			
 		}
 
 }

@@ -21,6 +21,10 @@ public class BahmniSyncWorkerConstants {
 	
 	public static final String OPENMRS_SCHEME_NAME = MODULE_ID + ".openmrs.schema.name";
 	
+	public static final String MASTER_NODE_USER = MODULE_ID + ".master.node.user";
+	
+	public static final String MASTER_NODE_PASSWORD = MODULE_ID + ".master.node.password";
+	
 	/* Privileges*/
 	public static final String MANAGE_BAHMNI_SYNC_PRIVILEGE = "Manage Bahmni Sync";
 }

@@ -90,6 +90,9 @@ public class WorkerConfigController {
 		props.add(BahmniSyncWorkerConstants.CHUNK_SIZE_GLOBAL_PROPERTY_NAME);
 		props.add(BahmniSyncWorkerConstants.DATABASE_SERVER_NAME);
 		props.add(BahmniSyncWorkerConstants.OPENMRS_SCHEME_NAME);
+		props.add(BahmniSyncWorkerConstants.MASTER_NODE_USER);
+		props.add(BahmniSyncWorkerConstants.MASTER_NODE_PASSWORD);
+		props.add(BahmniSyncWorkerConstants.OPENMRS_SCHEME_NAME);
 		
 		//remove the properties we dont want to edit
 		for (GlobalProperty gp : Context.getAdministrationService().getGlobalPropertiesByPrefix(

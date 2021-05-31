@@ -87,6 +87,7 @@ public class MasterConfigController {
 		props.add(BahmniSyncMasterConstants.KAFKA_URL_GLOBAL_PROPERTY_NAME);
 		props.add(BahmniSyncMasterConstants.DATABASE_SERVER_NAME);
 		props.add(BahmniSyncMasterConstants.OPENMRS_SCHEME_NAME);
+		props.add(BahmniSyncMasterConstants.CONFLICT_RESOLUTION_RULE);
 		
 		//remove the properties we dont want to edit
 		for (GlobalProperty gp : Context.getAdministrationService().getGlobalPropertiesByPrefix(
@@ -129,37 +130,16 @@ public class MasterConfigController {
 		@Override
 		public void validate(Object target, Errors errors) {
 			GlobalPropertiesModel model = (GlobalPropertiesModel) target;
-			/*for (int i = 0; i < model.getProperties().size(); ++i) {
+			for (int i = 0; i < model.getProperties().size(); ++i) {
 				GlobalProperty gp = model.getProperties().get(i);
-				if (gp.getProperty().equals(BahmniSyncMasterConstants.URI_PREFIX_GLOBAL_PROPERTY_NAME)) {
-					// TODO validate legal uri prefix
-				} else if (gp.getProperty().equals(BahmniSyncMasterConstants.ALLOWED_IPS_GLOBAL_PROPERTY_NAME)) {
-					// TODO validate legal comma-separated IPv4 or IPv6 addresses, wildcards, etc
-				} else if (gp.getProperty().equals(BahmniSyncMasterConstants.MAX_RESULTS_DEFAULT_GLOBAL_PROPERTY_NAME)) {
-					boolean okay = false;
-					try {
-						Integer maxResultsAbsoluteVal = Integer.valueOf(model.getProperty(
-						    BahmniSyncMasterConstants.MAX_RESULTS_ABSOLUTE_GLOBAL_PROPERTY_NAME).getPropertyValue());
-						if (Integer.valueOf(gp.getPropertyValue()) > 0
-						        && Integer.valueOf(gp.getPropertyValue()) <= maxResultsAbsoluteVal) {
-							okay = true;
-						}
-					}
-					catch (Exception ex) {}
-					if (!okay)
-						errors.rejectValue("properties[" + i + "]", BahmniSyncMasterConstants.MODULE_ID
-						        + ".maxResultsDefault.errorMessage");
-				} else if (gp.getProperty().equals(BahmniSyncMasterConstants.MAX_RESULTS_ABSOLUTE_GLOBAL_PROPERTY_NAME)) {
-					boolean okay = false;
-					try {
-						okay = Integer.valueOf(gp.getPropertyValue()) > 0;
-					}
-					catch (Exception ex) {}
-					if (!okay)
-						errors.rejectValue("properties[" + i + "]", BahmniSyncMasterConstants.MODULE_ID
-						        + ".maxResultsAbsolute.errorMessage");
-				}
-			}*/
+				if (gp.getProperty().equals(BahmniSyncMasterConstants.CONFLICT_RESOLUTION_RULE)) {
+					if(!(gp.getPropertyValue().equals("latest date_updated") ||
+						gp.getPropertyValue().equals("earliest date_updated") || 
+						gp.getPropertyValue().equals("master always") ||
+						gp.getPropertyValue().equals("worker always")))
+						errors.rejectValue("properties[" + i + "]", "invalid value!!");
+				} 
+			}
 		}
 		
 		/**

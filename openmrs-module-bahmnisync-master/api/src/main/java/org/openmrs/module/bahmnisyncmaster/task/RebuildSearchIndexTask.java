@@ -1,4 +1,4 @@
-package org.openmrs.module.bahmnisyncmaster.service;
+package org.openmrs.module.bahmnisyncmaster.task;
 
 import java.io.IOException;
 

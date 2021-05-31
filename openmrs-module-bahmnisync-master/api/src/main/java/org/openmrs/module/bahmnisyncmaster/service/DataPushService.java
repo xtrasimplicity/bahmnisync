@@ -32,6 +32,7 @@ import org.openmrs.api.context.Context;
 import org.openmrs.api.db.hibernate.DbSessionFactory;
 import org.openmrs.module.bahmnisyncmaster.BahmniSyncMasterLog;
 import org.openmrs.module.bahmnisyncmaster.BahmniSyncMasterLogDTO;
+import org.openmrs.module.bahmnisyncmaster.BahmniSyncMasterObsConflicts;
 import org.openmrs.module.bahmnisyncmaster.debezium.DebeziumObject;
 import org.openmrs.module.bahmnisyncmaster.util.CommandType;
 import org.openmrs.module.bahmnisyncmaster.util.DatabaseUtil;
@@ -54,10 +55,24 @@ public class DataPushService  {
 	}
 	
 	@Authorized(BahmniSyncMasterConstants.MANAGE_BAHMNI_SYNC_PRIVILEGE)
+	public BahmniSyncMasterObsConflicts getBahmniSyncMasterObsConflictById(Integer id){
+		Criteria criteria = sessionFactory.getCurrentSession().createCriteria(BahmniSyncMasterObsConflicts.class);
+		criteria.add(Restrictions.eq("bahmniSyncObsConflictsId", id));
+		return (BahmniSyncMasterObsConflicts) criteria.uniqueResult();
+	}
+	
+	@Authorized(BahmniSyncMasterConstants.MANAGE_BAHMNI_SYNC_PRIVILEGE)
 	public BahmniSyncMasterLog saveBahmniSyncMasterLog(BahmniSyncMasterLog log) throws APIException {
 		sessionFactory.getCurrentSession().saveOrUpdate(log);
 		return log;
 	}
+	
+	@Authorized(BahmniSyncMasterConstants.MANAGE_BAHMNI_SYNC_PRIVILEGE)
+	public BahmniSyncMasterObsConflicts saveBahmniSyncMasterObsConflict(BahmniSyncMasterObsConflicts log) throws APIException {
+		sessionFactory.getCurrentSession().saveOrUpdate(log);
+		return log;
+	}
+
 
 	@Authorized(BahmniSyncMasterConstants.MANAGE_BAHMNI_SYNC_PRIVILEGE)
 	public List<BahmniSyncMasterLog> getConflictBahmniSyncMasterLog() throws APIException {		
@@ -68,11 +83,24 @@ public class DataPushService  {
 	}
 	
 	@Authorized(BahmniSyncMasterConstants.MANAGE_BAHMNI_SYNC_PRIVILEGE)
+	public List<BahmniSyncMasterObsConflicts> getObsConflictBahmniSyncMasterLog() throws APIException {		
+		Criteria criteria = sessionFactory.getCurrentSession().createCriteria(BahmniSyncMasterObsConflicts.class);
+		return criteria.list();
+	}
+	
+	@Authorized(BahmniSyncMasterConstants.MANAGE_BAHMNI_SYNC_PRIVILEGE)
 	@Transactional
 	public void markLogAsResolved(Integer id) throws APIException {
 		BahmniSyncMasterLog log = getBahmniSyncMasterLogById(id);
 		log.setStatus("CONFLICT RESOLVED");
 		sessionFactory.getCurrentSession().update(log);
+	}
+	
+	@Authorized(BahmniSyncMasterConstants.MANAGE_BAHMNI_SYNC_PRIVILEGE)
+	@Transactional
+	public void deleteObsConflict(Integer id) throws APIException {
+		BahmniSyncMasterObsConflicts log = getBahmniSyncMasterObsConflictById(id);
+		sessionFactory.getCurrentSession().delete(log);
 	}
 	
 	@Authorized(BahmniSyncMasterConstants.MANAGE_BAHMNI_SYNC_PRIVILEGE)
@@ -279,6 +307,11 @@ public class DataPushService  {
 					String.valueOf(keys.get("REFERENCED_UUID")) + "';";
 			String qValue = getValue(q,con);
 				
+			System.out.println(qValue);
+			System.out.println(keys.get("COLUMN_NAME"));
+			System.out.println(String.valueOf(keys.get("COLUMN_NAME")));
+			System.out.println(String.valueOf(keys.get("REFERENCED_UUID")));
+			
 			query = query.replace("<"+String.valueOf(keys.get("COLUMN_NAME")) +">", qValue);
 			
 		}
@@ -321,58 +354,84 @@ public class DataPushService  {
 				return;
 			
 			if(!serverData.equals(clientPreviousData)){
+				
+				String conflictResolution = Context.getAdministrationService().getGlobalProperty(BahmniSyncMasterConstants.CONFLICT_RESOLUTION_RULE);
 			  
-	            String dateWorker = (String)dbObj.getData().get("date_changed"); 
-				String dateServer = getValue("SELECT date_changed from " + dbObj.getTable() + " where uuid = '" + (String)dbObj.getData().get("uuid")+ "'", con);
-				
-				Date dateUpdatedWorker = null;
-				if(dateWorker != null)
-					dateUpdatedWorker = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(dateWorker); 
-				Date dateUpdatedServer = null;
-				if(dateServer != null)
-					dateUpdatedServer = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(dateServer);
-				
-			    Date dateVoidedWorker = null;
-			    Date dateVoidedServer = null;
-			    
-			    if(dbObj.getData().containsKey("date_voided") && dbObj.getData().get("date_voided")!= null){
-			    
-		            String voidedWorker = (String)dbObj.getData().get("date_voided"); 
-					String voidedServer = getValue("SELECT date_voided from " + dbObj.getTable() + " where uuid = '" + (String)dbObj.getData().get("uuid")+ "'", con);
-					
-					if(voidedWorker != null)
-						dateVoidedWorker = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(voidedWorker); 
-					if(voidedServer != null)
-						dateVoidedServer = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(voidedServer);  
-				
-			    }
-			    else if(dbObj.getData().containsKey("date_retired") && dbObj.getData().get("date_retired")!= null){
-			    
-		            String voidedWorker = (String)dbObj.getData().get("date_retired");
-					String voidedServer = getValue("SELECT date_retired from " + dbObj.getTable() + " where uuid = '" + (String)dbObj.getData().get("uuid")+ "'", con);
-					 
-					if(voidedWorker != null)
-						dateVoidedWorker = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(voidedWorker); 
-					if(voidedServer != null)
-						dateVoidedServer = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(voidedServer);  
-					
-			    }
-			    
-			    Date maxServerDate = max(dateUpdatedServer, dateVoidedServer);
-			    Date maxClientDate = max(dateUpdatedWorker, dateVoidedWorker);
-			    
-				Object[][] dataServer = DatabaseUtil.getTableData("SELECT * from " + dbObj.getTable() + " where uuid = '" + (String)dbObj.getData().get("uuid")+"'", con);
-				
-			    if(maxServerDate == null){
-			    	ret = DatabaseUtil.runCommand(CommandType.UPDATE, dbObj.getQuery(),con);
+				if(conflictResolution.equals("master always"))
+					getLogString(dbObj, serverData, "Kept the one form master due to latest date.", "CONFLICT", con);
+				else if(conflictResolution.equals("worker always")){
+					ret = DatabaseUtil.runCommand(CommandType.UPDATE, dbObj.getQuery(),con);
 			    	getLogString(dbObj, serverData, "Kept the one form worker due to latest date.", "CONFLICT", con);
-			    }
-			    else if(maxClientDate.after(maxServerDate)){
-			    	ret = DatabaseUtil.runCommand(CommandType.UPDATE, dbObj.getQuery(),con);
-			    	getLogString(dbObj, serverData, "Kept the one form worker due to latest date.", "CONFLICT", con);	    
-			    }else{
-			    	getLogString(dbObj, serverData, "Kept the one form master due to latest date.", "CONFLICT", con);
-			    }
+				}
+				else {
+		            String dateWorker = (String)dbObj.getData().get("date_changed"); 
+					String dateServer = getValue("SELECT date_changed from " + dbObj.getTable() + " where uuid = '" + (String)dbObj.getData().get("uuid")+ "'", con);
+					
+					Date dateUpdatedWorker = null;
+					if(dateWorker != null)
+						dateUpdatedWorker = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(dateWorker); 
+					Date dateUpdatedServer = null;
+					if(dateServer != null)
+						dateUpdatedServer = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(dateServer);
+					
+				    Date dateVoidedWorker = null;
+				    Date dateVoidedServer = null;
+				    
+				    if(dbObj.getData().containsKey("date_voided") && dbObj.getData().get("date_voided")!= null){
+				    
+			            String voidedWorker = (String)dbObj.getData().get("date_voided"); 
+						String voidedServer = getValue("SELECT date_voided from " + dbObj.getTable() + " where uuid = '" + (String)dbObj.getData().get("uuid")+ "'", con);
+						
+						if(voidedWorker != null)
+							dateVoidedWorker = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(voidedWorker); 
+						if(voidedServer != null)
+							dateVoidedServer = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(voidedServer);  
+					
+				    }
+				    else if(dbObj.getData().containsKey("date_retired") && dbObj.getData().get("date_retired")!= null){
+				    
+			            String voidedWorker = (String)dbObj.getData().get("date_retired");
+						String voidedServer = getValue("SELECT date_retired from " + dbObj.getTable() + " where uuid = '" + (String)dbObj.getData().get("uuid")+ "'", con);
+						 
+						if(voidedWorker != null)
+							dateVoidedWorker = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(voidedWorker); 
+						if(voidedServer != null)
+							dateVoidedServer = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(voidedServer);  
+						
+				    }
+				    
+				    Date maxServerDate = max(dateUpdatedServer, dateVoidedServer);
+				    Date maxClientDate = max(dateUpdatedWorker, dateVoidedWorker);
+				    
+					Object[][] dataServer = DatabaseUtil.getTableData("SELECT * from " + dbObj.getTable() + " where uuid = '" + (String)dbObj.getData().get("uuid")+"'", con);
+
+				    
+				    if(conflictResolution.equals("latest date_updated")){
+					    						
+					    if(maxServerDate == null){
+					    	ret = DatabaseUtil.runCommand(CommandType.UPDATE, dbObj.getQuery(),con);
+					    	getLogString(dbObj, serverData, "Kept the one form worker due to latest date.", "CONFLICT", con);
+					    }
+					    else if(maxClientDate.after(maxServerDate)){
+					    	ret = DatabaseUtil.runCommand(CommandType.UPDATE, dbObj.getQuery(),con);
+					    	getLogString(dbObj, serverData, "Kept the one form worker due to latest date.", "CONFLICT", con);	    
+					    }else{
+					    	getLogString(dbObj, serverData, "Kept the one form master due to latest date.", "CONFLICT", con);
+					    }
+				    } else {
+					    						
+					    if(maxServerDate == null){
+					    	ret = DatabaseUtil.runCommand(CommandType.UPDATE, dbObj.getQuery(),con);
+					    	getLogString(dbObj, serverData, "Kept the one form worker due to earliest date.", "CONFLICT", con);
+					    }
+					    else if(maxClientDate.before(maxServerDate)){
+					    	ret = DatabaseUtil.runCommand(CommandType.UPDATE, dbObj.getQuery(),con);
+					    	getLogString(dbObj, serverData, "Kept the one form worker due to earliest date.", "CONFLICT", con);	    
+					    }else{
+					    	getLogString(dbObj, serverData, "Kept the one form master due to earliest date.", "CONFLICT", con);
+					    }
+				    }
+				}
 			    
 			}
 			else{
@@ -395,12 +454,18 @@ public class DataPushService  {
 			
 			if(serverData.equals(clientData))
 				return;
-						
-			ret = DatabaseUtil.runCommand(CommandType.CREATE, dbObj.getQuery(),con);
-			if(ret instanceof Exception)
-				getLogString(dbObj, null, ((Exception) ret).getMessage().toString(), "ERROR", con);
-			else
-				getLogString(dbObj, null, "", "SUCCESS", con);
+			
+			Boolean flag = isObsConflict(dbObj, con);
+			System.out.println("----"+flag+"----");
+			
+			if(flag){
+				ret = DatabaseUtil.runCommand(CommandType.CREATE, dbObj.getQuery(),con);
+				if(ret instanceof Exception)
+					getLogString(dbObj, null, ((Exception) ret).getMessage().toString(), "ERROR", con);
+				else
+					getLogString(dbObj, null, "", "SUCCESS", con);
+			}
+			
 			
 		}  else if (dbObj.getOp().equals("d")){
 		
@@ -411,6 +476,138 @@ public class DataPushService  {
 				getLogString(dbObj, null, "", "SUCCESS", con);
 			
 		}
+		
+	}
+	
+	public Boolean isObsConflict(DebeziumObject dbObj, Connection con){
+		
+		Boolean flag = true;
+		String objString = (String)dbObj.getTable();
+		if(objString.equals("obs")){
+			
+			System.out.println("I'm in obs....");
+			
+			ArrayList<Map<String,Object>> fkJsonArray = dbObj.getFk();
+			
+			String query = "Select value_coded, value_datetime, value_text, value_numeric, value_drug from obs where ";
+			
+			int conceptId = 0;
+			int encounterId = 0;
+			int personId = 0;
+			
+			for(Map<String,Object> keys : fkJsonArray){
+				
+				String colName = String.valueOf(keys.get("COLUMN_NAME"));
+				
+				if(colName.equals("person_id") || colName.equals("concept_id") || colName.equals("encounter_id") || colName.equals("obs_grouping_id")){
+				
+					String q = "SELECT " + String.valueOf(keys.get("REFERENCED_COLUMN_NAME")) + " from " +
+							String.valueOf(keys.get("REFERENCED_TABLE_NAME")) + " where uuid = '" + 
+							String.valueOf(keys.get("REFERENCED_UUID")) + "';";
+					String qValue = getValue(q,con);
+					
+					query = query + String.valueOf(keys.get("COLUMN_NAME")) + " = " + qValue + " and ";
+					
+					if(colName.equals("concept_id")) conceptId = Integer.parseInt(qValue);
+					else if(colName.equals("encounter_id")) encounterId = Integer.parseInt(qValue);
+					else if(colName.equals("person_id")) personId = Integer.parseInt(qValue);
+											
+				}
+										
+			}
+			
+			query = query + " voided = 0;";
+			
+			Object[][] resultObjects = DatabaseUtil.getTableData(query, con);
+			
+			if(resultObjects.length != 0){
+				
+				BahmniSyncMasterObsConflicts log = new BahmniSyncMasterObsConflicts();
+				
+				log.setLogDateTime(new Date());
+				log.setWorkerId(dbObj.getWorkerId());
+				log.setConceptId(conceptId);
+				log.setEncounterId(encounterId);
+				log.setPatientId(personId);
+				
+				
+				if(dbObj.getData().get("value_coded") != null){
+					String conceptUuid = String.valueOf(dbObj.getData().get("value_coded"));
+					String q = "SELECT concept_id from concept where uuid = '" + conceptUuid + "';";
+					String qValue = getValue(q,con);
+					log.setValuetype("concept");
+					log.setWorkerData(qValue);
+				} else if(dbObj.getData().get("value_datetime") != null){
+					log.setValuetype("datetime");
+					log.setWorkerData(String.valueOf(dbObj.getData().get("value_datetime")));
+				} else if(dbObj.getData().get("value_text") != null){
+					log.setValuetype("text");
+					log.setWorkerData(String.valueOf(dbObj.getData().get("value_text")));
+				} else if(dbObj.getData().get("value_numeric") != null){
+					log.setValuetype("numeric");
+					String valueNumeric = String.valueOf(dbObj.getData().get("value_numeric"));
+					if(!valueNumeric.contains(".")) valueNumeric = valueNumeric + ".0";
+					log.setWorkerData(valueNumeric);
+				} else if(dbObj.getData().get("value_drug") != null){
+					String drugUuid = String.valueOf(dbObj.getData().get("value_drug"));
+					String q = "SELECT drug_id from drug where uuid = '" + drugUuid + "';";
+					String qValue = getValue(q,con);
+					log.setValuetype("drug");
+					log.setWorkerData(qValue);
+				}
+				
+				String value = "";
+				for(Object[] object : resultObjects){
+					if(dbObj.getData().get("value_coded") != null){
+						if(object[0] != null){
+							if(String.valueOf(object[0]).equals(log.getWorkerData())) {
+								flag = false;
+							} 
+							value = value + object[0] + ",";
+						}
+					} else if(dbObj.getData().get("value_datetime") != null){
+						if(object[1] != null){
+							if(String.valueOf(object[1]).equals(log.getWorkerData())) {
+								flag = false;
+							} 
+							value = value + object[1] + ",";
+						}
+					} else if(dbObj.getData().get("value_text") != null){
+						if(object[2] != null){
+							if(String.valueOf(object[2]).equals(log.getWorkerData())) {
+								flag = false;
+							} 
+							value = value + object[2] + ",";
+						}
+					} else if(dbObj.getData().get("value_numeric") != null){
+						if(object[3] != null){
+							System.out.println(object[3]);
+							System.out.println(log.getWorkerData());
+							if(String.valueOf(object[3]).equals(log.getWorkerData())) {
+								System.out.println("HERE!!");
+								flag = false;
+							} 
+							value = value + object[3] + ",";
+						}
+					} else if(dbObj.getData().get("value_drug") != null){
+						if(object[4] != null){
+							if(String.valueOf(object[4]).equals(log.getWorkerData())) {
+								flag = false;
+							} 
+							value = value + object[4] + ",";
+						}
+					}
+				}
+				log.setMasterData(value.substring(0,value.length()-1));
+				
+				if(flag)
+					saveBahmniSyncMasterObsConflict(log);
+				
+			}
+			
+		}
+		
+		return flag;
 		
 	}
 	
@@ -505,6 +702,13 @@ public class DataPushService  {
         if (d1 == null) return d2;
         if (d2 == null) return d1;
         return (d1.after(d2)) ? d1 : d2;
+    }
+	
+	public static Date min(Date d1, Date d2) {
+        if (d1 == null && d2 == null) return null;
+        if (d1 == null) return d2;
+        if (d2 == null) return d1;
+        return (d1.after(d2)) ? d2 : d1;
     }
 	
 	public Map<String, String> convertWithStream(String mapAsString) {

@@ -15,13 +15,18 @@ package org.openmrs.module.bahmnisyncmaster.web.controller;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.codehaus.jackson.JsonGenerationException;
+import org.codehaus.jackson.map.JsonMappingException;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -31,10 +36,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.openmrs.Concept;
+import org.openmrs.Encounter;
 import org.openmrs.GlobalProperty;
+import org.openmrs.Patient;
 import org.openmrs.api.AdministrationService;
 import org.openmrs.api.context.Context;
 import org.openmrs.module.bahmnisyncmaster.BahmniSyncMasterLog;
+import org.openmrs.module.bahmnisyncmaster.BahmniSyncMasterObsConflicts;
+import org.openmrs.module.bahmnisyncmaster.BahmniSyncMasterSyncConflictDTO;
 import org.openmrs.module.bahmnisyncmaster.service.DataPushService;
 import org.openmrs.module.bahmnisyncmaster.util.BahmniSyncMasterConstants;
 import org.openmrs.web.WebConstants;
@@ -49,7 +59,6 @@ import org.springframework.web.context.request.WebRequest;
  * 'module/basicmodule/basicmoduleLink.form'.
  */
 @Controller
-@RequestMapping(value = "/module/bahmnisyncmaster/conflict.form")
 public class MasterConflictController {
 	
 	@Autowired
@@ -59,80 +68,100 @@ public class MasterConflictController {
 	protected final Log log = LogFactory.getLog(getClass());
 	
 	/** Success form view name */
-	private final String SUCCESS_FORM_VIEW = "/module/bahmnisyncmaster/conflict";
+	private final String SUCCESS_FORM_VIEW = "/module/bahmnisyncmaster/obsconflict";
 	
 	/**
 	 * Initially called after the formBackingObject method to get the landing form name
 	 * 
 	 * @return String form view name
 	 */
-	@RequestMapping(method = RequestMethod.GET)
+	@RequestMapping(method = RequestMethod.GET, value = "/module/bahmnisyncmaster/obsconflict.form")
 	public String showForm() {
 		return SUCCESS_FORM_VIEW;
 	}
 	
 	@ModelAttribute("mastersyncconflicts")
-	public List<BahmniSyncMasterLog> getModel() {
+	public String getModel() throws JsonGenerationException, JsonMappingException, IOException {
 		
-		List<BahmniSyncMasterLog> logs = dataPullService.getConflictBahmniSyncMasterLog();
+		List<BahmniSyncMasterObsConflicts> logs = dataPullService.getObsConflictBahmniSyncMasterLog();
 		
-		List<BahmniSyncMasterLog> newLogs = new ArrayList();
-		for(BahmniSyncMasterLog log: logs){
-			String master = log.getMasterData();
-			String worker = log.getWorkerData();
+		List<BahmniSyncMasterSyncConflictDTO> dtoLogs = new ArrayList<>();
+		for(BahmniSyncMasterObsConflicts log : logs){
 			
-			Map<String, String> masterMap = convertWithStream(master);
-			Map<String, String> workerMap = convertWithStream(worker);
+			BahmniSyncMasterSyncConflictDTO dto = new BahmniSyncMasterSyncConflictDTO();
+			dto.setBahmniSyncObsConflictId(log.getBahmniSyncObsConflictsId());
+			dto.setWorkerId(log.getWorkerId());
+			dto.setLogDateTime(log.getLogDateTime());
 			
-			String conflictingData = "";
-			for (Map.Entry<String,String> entry : masterMap.entrySet()) {
-				if(!entry.getValue().equals(workerMap.get(entry.getKey()))){
-					String list = entry.getKey() + ": ";
-					if(log.getMessage().contains("master"))
-						list = list + "<b>" + entry.getValue() + "</b> , ";
-					else	
-						list = list + entry.getValue() + " , ";
-					
-					if(log.getMessage().contains("worker"))
-						list = list + "<b>" + workerMap.get(entry.getKey())  + "</b> ";
-					else	
-						list = list + workerMap.get(entry.getKey()) ;
-					 
-					conflictingData = conflictingData + list + "<br/>";
+			Patient patient = Context.getPatientService().getPatient(log.getPatientId());
+			if(patient != null){
+				String patientString = patient.getGivenName() + " " + patient.getFamilyName() + "<i>("+ patient.getPatientIdentifier() +")</i>";
+				dto.setPatient(patientString);
+			}
+			else
+				dto.setPatient("-");
+			
+			Encounter enc = Context.getEncounterService().getEncounter(log.getEncounterId());
+			if(enc != null){
+				String encounterString = enc.getEncounterType().getName() + "<i>(" + enc.getEncounterId() + ")</i>" ;
+				dto.setEncounter(encounterString);
+			}
+			else
+				dto.setEncounter("-");
+			
+			Concept concept = Context.getConceptService().getConcept(log.getConceptId());
+			if(concept != null){
+				String conceptString = concept.getDisplayString() + "<i>(" + concept.getConceptId() + ")</i>" ;
+				dto.setConcept(conceptString);
+			}
+			else
+				dto.setConcept("-");
+			
+			String workerdata = log.getWorkerData();
+			
+			String dataType = log.getValueType();
+			if(dataType.equals("concept")){
+				Concept concept1 = Context.getConceptService().getConcept(workerdata);
+				if(concept1 != null){
+					String conceptString = concept1.getDisplayString() + "<i>(" + concept1.getConceptId() + ")</i>" ;
+					dto.setWorkerData(conceptString);
 				}
-			}
-	           
-			log.setMasterData(conflictingData);
+				else
+					dto.setWorkerData("-");
+			} else 
+				dto.setWorkerData(workerdata);
 			
-			if(log.getTable().contains("concept")){
-				log.setStatus(masterMap.get("concept_id"));
-			} else if(log.getTable().contains("patient")){
-				log.setStatus(masterMap.get("patient_id"));
-			} else if(log.getTable().contains("person_id")){
-				log.setStatus(masterMap.get("person_id"));
-			} else if(log.getTable().equals("encounter") || log.getTable().equals("obs")){
-				log.setStatus(masterMap.get("encounter_id"));
-			} else {
-				log.setStatus(masterMap.get("-"));
-			}
+			String serviceData = log.getMasterData();
+			String[] datas = serviceData.split(",");
 			
-			newLogs.add(log);
+			String value = "";
+			for(String data:datas){
+				if(dataType.equals("concept")){
+					Concept concept1 = Context.getConceptService().getConcept(data);
+					if(concept1 != null){
+						String conceptString = concept1.getDisplayString() + "<i>(" + concept1.getConceptId() + ")</i>" ;
+						value = value + conceptString + "</br>";
+					}
+				} else 
+					value = value + data + "</br>";
+			}
+			dto.setMasterData(value);
+			
+			dtoLogs.add(dto);
 		}
 		
-		return logs;
+		
+		ObjectMapper mapper = new ObjectMapper();
+		return mapper.writeValueAsString(dtoLogs);
 		
 	}
 	
-	public Map<String, String> convertWithStream(String mapAsString) {
-		mapAsString = mapAsString.replace("{","");
-		mapAsString = mapAsString.replace("}","");
-		Map<String, String> map = new HashMap<>();
-	    String[] splitArray = mapAsString.split(",");
-	    for(String str : splitArray){
-	    	String[] mapArray = str.split("=");
-	    	map.put(mapArray[0],mapArray[1]);
-	    }
-	    return map;
+	@RequestMapping(method = RequestMethod.GET, value = "/module/bahmnisyncmaster/resolveObsConflict.form")
+	public @ResponseBody String markConflictAsResolved(@RequestParam("id")Integer id) throws JsonGenerationException, JsonMappingException, IOException
+	{
+		dataPullService.deleteObsConflict(id);
+		return "success";
 	}
+	
 	
 }
