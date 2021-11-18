@@ -536,6 +536,7 @@ public class BahmniSyncWorkerService  {
 		       		  postObjects.clear();
 		                 
 		            }  while (!records.isEmpty());
+		    		consumer.commitSync();
 		            consumer.close();
 	    		}
 			}
@@ -558,8 +559,10 @@ public class BahmniSyncWorkerService  {
 		props.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
 		props.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
 		props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, GROUP_ID + "worker-side-001");
-		props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+		props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
 		props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, MAX_POLL_SIZE);
+		props.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+
 		
 		// Create the consumer using props.
 		KafkaConsumer<String, String> consumer = new KafkaConsumer<String, String>(props);
@@ -937,8 +940,13 @@ public class BahmniSyncWorkerService  {
 		   } 
 		} 
 		String query = replacePrimaryKeyTagsInQuery(fk, String.valueOf(map.get("query")), con);
-		List<String> pks = (List<String>)map.get("pk");
-
+		JSONArray pkArray = map.getJSONArray("pk");
+		List<String> pks = new ArrayList();
+		if (pkArray != null) { 
+		   for (int i=0;i<pkArray.length();i++){ 
+			  pks.add(pkArray.get(i).toString());
+		   } 
+		} 
 						
 		DebeziumObject debeziumObject = new DebeziumObject(map.getString("op"),
 														map.getString("db"),

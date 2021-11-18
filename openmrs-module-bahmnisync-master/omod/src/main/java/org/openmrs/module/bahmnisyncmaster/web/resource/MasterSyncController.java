@@ -82,7 +82,7 @@ public class MasterSyncController {
 	
 		return "DONE!";
 	}
-	
+		
 	@RequestMapping(value = "/debeziumObjects/{serverid}/{table}/{chunksize}", method = RequestMethod.GET)
 	@ResponseBody
     public String getDebeziumObjects(HttpServletRequest request, @PathVariable(value="serverid") String serverid, @PathVariable(value="table") String table, @PathVariable(value="chunksize") Integer chunksize) throws Exception {

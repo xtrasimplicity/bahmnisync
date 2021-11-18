@@ -230,7 +230,9 @@ public class DataPullService  {
 			            	}
 			             }while(postObjects.size() < chunckSize);
 			            	
+			             consumer.commitAsync();
 			             consumer.close(); 
+			             
 		            }
 			}
 		});
@@ -272,6 +274,7 @@ public class DataPullService  {
     	props.setProperty(ConsumerConfig.GROUP_ID_CONFIG,serverid);  
     	props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,"earliest");
     	props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, String.valueOf(chunckSize));
+    	props.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
     	
     	String dbName = Context.getAdministrationService().getGlobalProperty(BahmniSyncMasterConstants.DATABASE_SERVER_NAME);
 		String schemaName = Context.getAdministrationService().getGlobalProperty(BahmniSyncMasterConstants.OPENMRS_SCHEME_NAME);

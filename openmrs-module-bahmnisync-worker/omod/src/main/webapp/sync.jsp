@@ -272,12 +272,14 @@
 			<th style="text-align: left">Error Message:</th>
 			<td d="syncMessage">${syncMessage}</td>
 		</tr>	
+		<tr> 
+		     <td></td>
+		     <td> <input id="syncButton" type="submit" value='Start Sync Process' onclick="syncProcess()"> </td>
+		</tr>
 	</table>
 </form>
 
 <br/>
-
-<input id="syncButton" type="submit" value='Start Sync Process' onclick="syncProcess()">
 <br>
 <div id="progress">
     <p>Inprogress</p>

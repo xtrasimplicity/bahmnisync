@@ -1,9 +1,0 @@
-com\ihsinformatics\bahmnisync_server\debezium\consumer\BahmniSyncServerDataSync.class
-com\ihsinformatics\bahmnisync_server\debezium\DebeziumService.class
-com\ihsinformatics\bahmnisync_server\util\CommandType.class
-com\ihsinformatics\bahmnisync_server\util\DatabaseUtil$1.class
-com\ihsinformatics\bahmnisync_server\util\DatabaseUtil.class
-com\ihsinformatics\bahmnisync_server\debezium\DebeziumObject.class
-com\ihsinformatics\bahmnisync_server\util\DataType.class
-com\ihsinformatics\bahmnisync_server\BahmniSyncServer.class
-com\ihsinformatics\bahmnisync_server\controller\DebeziumController.class
