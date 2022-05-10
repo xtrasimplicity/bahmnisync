@@ -1,0 +1,48 @@
+version: '3.5'
+services:
+  zookeeper:
+    image: jplock/zookeeper # Can we change this to official zookeeper:3.8.0? jplock == 3.5.5
+    restart: unless-stopped
+    ports:
+      - 2181:2181
+
+  kafka:
+    image: ches/kafka # Can we change this to bitnami/kafka:3.1.0? ches/kafka == 0.10.2.1
+    restart: unless-stopped
+    environment:
+      KAFKA_ADVERTISED_HOST_NAME: kafka
+      ZOOKEEPER_IP: zookeeper
+    depends_on:
+      - zookeeper
+    ports:
+      - 9092:9092
+
+  mysql:
+    image: debezium/example-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-debezium}
+      MYSQL_USER: ${MYSQL_USER:-mysqluser}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-mysqlpw}
+    ports:
+      - 3306:3306
+    
+  kafka-connect:
+    image: debezium/connect
+    environment:
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: my_connect_configs
+      OFFSET_STORAGE_TOPIC: my_connect_offsets
+      STATUS_STORAGE_TOPIC: my_connect_statuses
+      BOOTSTRAP_SERVERS: 'kafka:9092'
+    depends_on:
+      - zookeeper
+      - kafka
+      - mysql
+    ports:
+      - 8083:8083
+    volumes:
+      - kafka-connect:/kafka/config
+
+volumes:
+  kafka-connect:
+    
